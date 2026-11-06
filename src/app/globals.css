@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply antialiased bg-[#F8FAFC] text-slate-800;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Thermal 80mm Print Media Styles */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .receipt-content,
+  .receipt-content * {
+    visibility: visible;
+  }
+
+  .receipt-content {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm !important;
+    margin: 0 !important;
+    padding: 8px !important;
+    font-size: 11px !important;
+    line-height: 1.25 !important;
+    color: #000000 !important;
+    background: #ffffff !important;
+  }
+
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
+}
