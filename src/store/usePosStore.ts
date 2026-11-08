@@ -11,6 +11,7 @@ import {
   Language,
 } from '@/types/pos';
 import { db } from '@/db/posDb';
+import { syncPendingTransactions, getStoreSyncStatus } from '@/utils/cloudSyncManager';
 
 interface PosState {
   activeBrandId: string;
@@ -18,6 +19,11 @@ interface PosState {
   currency: string;
   language: Language;
   isOnline: boolean;
+  isNetworkConnected: boolean;
+  isSyncing: boolean;
+  pendingSyncCount: number;
+  lastSyncAt: string | null;
+  syncError: string | null;
   isKioskMode: boolean;
 
   // Active Register State
@@ -33,7 +39,10 @@ interface PosState {
   // Actions
   setLanguage: (lang: Language) => void;
   setActiveBrand: (brandId: string, brandName?: string) => void;
-  setOnlineStatus: (status: boolean) => void;
+  setOnlineStatus: (status: boolean) => Promise<{ success: boolean; message?: string }>;
+  setNetworkConnected: (connected: boolean) => void;
+  refreshPendingSyncCount: () => Promise<number>;
+  syncNow: () => Promise<{ success: boolean; syncedCount: number; message: string }>;
   toggleKioskMode: (kiosk?: boolean) => void;
   setCashier: (cashier: { id: string; name: string; role: string }) => void;
   setActiveShift: (shift: ShiftSession | null) => void;
@@ -72,11 +81,16 @@ interface PosState {
 }
 
 export const usePosStore = create<PosState>((set, get) => ({
-  activeBrandId: 'BRD-101',
-  brandName: 'Central Mart',
+  activeBrandId: '',
+  brandName: '',
   currency: '₹',
   language: 'en',
-  isOnline: true,
+  isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
+  isNetworkConnected: typeof navigator !== 'undefined' ? navigator.onLine : true,
+  isSyncing: false,
+  pendingSyncCount: 0,
+  lastSyncAt: null,
+  syncError: null,
   isKioskMode: false,
 
   cart: [],
@@ -84,9 +98,9 @@ export const usePosStore = create<PosState>((set, get) => ({
   selectedCustomer: null,
   activeShift: null,
   activeCashier: {
-    id: 'staff-001',
-    name: 'Ibrahim Kadri (Admin)',
-    role: 'ADMIN',
+    id: 'staff-guest',
+    name: 'Store Associate',
+    role: 'STAFF',
   },
   appliedPromo: null,
   cartDiscount: 0,
@@ -100,10 +114,77 @@ export const usePosStore = create<PosState>((set, get) => ({
     }
   },
 
-  setActiveBrand: (brandId: string, brandName = 'Central Mart') =>
-    set({ activeBrandId: brandId, brandName }),
+  setActiveBrand: (brandId: string, brandName = '') => {
+    set({ activeBrandId: brandId, brandName });
+    get().refreshPendingSyncCount();
+  },
 
-  setOnlineStatus: (status: boolean) => set({ isOnline: status }),
+  setOnlineStatus: async (status: boolean) => {
+    if (status) {
+      const physical = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      if (!physical) {
+        set({ isOnline: false, syncError: 'Physical network is offline. Connect to Wi-Fi first.' });
+        return { success: false, message: 'Physical network is offline. Connect to Wi-Fi first.' };
+      }
+      set({ isOnline: true, syncError: null });
+      const res = await get().syncNow();
+      return { success: true, message: res.message };
+    } else {
+      set({ isOnline: false, syncError: null });
+      return { success: true, message: 'Switched to Offline Mode. Transactions will be saved locally.' };
+    }
+  },
+
+  setNetworkConnected: (connected: boolean) => {
+    const wasConnected = get().isNetworkConnected;
+    set({ isNetworkConnected: connected });
+    if (!connected) {
+      set({ isOnline: false });
+    } else if (!wasConnected && connected) {
+      set({ isOnline: true });
+      get().syncNow().catch((e) => console.warn('Auto sync on network reconnect error:', e));
+    }
+  },
+
+  refreshPendingSyncCount: async () => {
+    try {
+      const brandId = get().activeBrandId;
+      const status = await getStoreSyncStatus(brandId);
+      set({ pendingSyncCount: status.pendingOrdersCount, lastSyncAt: status.lastSyncAt });
+      return status.pendingOrdersCount;
+    } catch {
+      return 0;
+    }
+  },
+
+  syncNow: async () => {
+    if (get().isSyncing) {
+      return { success: false, syncedCount: 0, message: 'Sync already in progress' };
+    }
+    const physical = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    if (!physical) {
+      set({ syncError: 'No internet connection' });
+      return { success: false, syncedCount: 0, message: 'No internet connection' };
+    }
+
+    set({ isSyncing: true, syncError: null });
+    try {
+      const brandId = get().activeBrandId || 'oursell';
+      const result = await syncPendingTransactions(brandId);
+      const newStatus = await getStoreSyncStatus(brandId);
+      set({
+        isSyncing: false,
+        pendingSyncCount: newStatus.pendingOrdersCount,
+        lastSyncAt: newStatus.lastSyncAt || new Date().toISOString(),
+        syncError: result.success ? null : result.message,
+      });
+      return result;
+    } catch (err: any) {
+      const msg = err?.message || 'Sync failed';
+      set({ isSyncing: false, syncError: msg });
+      return { success: false, syncedCount: 0, message: msg };
+    }
+  },
 
   toggleKioskMode: (kiosk?: boolean) =>
     set((state) => ({ isKioskMode: kiosk !== undefined ? kiosk : !state.isKioskMode })),
@@ -386,6 +467,7 @@ export const usePosStore = create<PosState>((set, get) => ({
       status: 'COMPLETED',
       notes: payment.notes,
       createdAt: new Date().toISOString(),
+      syncedToCloud: false,
     };
 
     try {
@@ -446,6 +528,17 @@ export const usePosStore = create<PosState>((set, get) => ({
       }
 
       clearCart();
+
+      // Immediately increment local pending count
+      set((s) => ({ pendingSyncCount: s.pendingSyncCount + 1 }));
+
+      // Background sync to Supabase Cloud if online
+      if (get().isOnline && typeof navigator !== 'undefined' && navigator.onLine) {
+        get().syncNow().catch((e) => {
+          console.warn('Background Supabase cloud sync deferred:', e);
+        });
+      }
+
       return { success: true, order: newOrder };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Checkout transaction failed';

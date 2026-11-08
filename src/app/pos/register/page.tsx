@@ -87,7 +87,7 @@ export default function PosRegisterPage() {
 
     if (openShift) {
       setActiveShiftInfo({
-        id: `Shift #${openShift.id.slice(-2)}`,
+        id: openShift.shiftNumber || 'Shift #01',
         openingFloat: openShift.openingFloat || 2000,
         shiftSales: totalSales,
       });

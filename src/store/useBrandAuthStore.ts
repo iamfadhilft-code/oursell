@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Brand, StoreAccount, StaffPermission } from '@/types/pos';
-import { db } from '@/db/posDb';
+import { db, seedDevCoreData } from '@/db/posDb';
 import { usePosStore } from './usePosStore';
+import { verifyPassword } from '@/utils/cryptoUtils';
 
 interface BrandAuthState {
   isAuthenticated: boolean;
@@ -19,6 +20,7 @@ interface BrandAuthState {
   ) => Promise<{ success: boolean; redirectUrl?: string; role?: string; error?: string }>;
   logout: () => void;
   checkSession: () => Promise<void>;
+  switchToRole: (role: 'STORE_ADMIN' | 'STORE_STAFF') => Promise<void>;
   hasPermission: (permission: StaffPermission) => boolean;
 }
 
@@ -45,21 +47,25 @@ export const useBrandAuthStore = create<BrandAuthState>()(
         }
 
         // 1. Check Platform Developer / Super Admin credentials
-        if (
-          (trimmedUser === 'ourselldev' && trimmedPass === 'oursell@6001') ||
-          (trimmedUser === 'devcore' && trimmedPass === 'devcore@admin2026')
-        ) {
-          set({
-            isAuthenticated: true,
-            currentRole: 'SUPER_ADMIN',
-            permissions: ['all'],
-            isLoading: false,
-            loginError: null,
-          });
-          return { success: true, redirectUrl: '/devcore', role: 'SUPER_ADMIN' };
+        if (trimmedUser === 'devcore') {
+          await seedDevCoreData().catch(() => {});
+          const devUser = await db.dev_core_users.where('username').equalsIgnoreCase('devcore').first().catch(() => null);
+          if (devUser) {
+            const isValid = await verifyPassword(trimmedPass, devUser.passwordHash, devUser.salt);
+            if (isValid) {
+              set({
+                isAuthenticated: true,
+                currentRole: 'SUPER_ADMIN',
+                permissions: ['all'],
+                isLoading: false,
+                loginError: null,
+              });
+              return { success: true, redirectUrl: '/devcore', role: 'SUPER_ADMIN' };
+            }
+          }
         }
 
-        // 2. Check accounts table for Store Accounts (e.g. oursell@admin, oursell@staff)
+        // 2. Check accounts table for Store Accounts
         const account = await db.accounts
           .where('username')
           .equalsIgnoreCase(trimmedUser)
@@ -87,7 +93,12 @@ export const useBrandAuthStore = create<BrandAuthState>()(
             .catch(() => null);
 
           const storeSlug = account.storeId;
-          usePosStore.getState().setActiveBrand(storeSlug, store?.brandName || 'Oursell Retail');
+          usePosStore.getState().setActiveBrand(storeSlug, store?.brandName || 'Oursell Demo Store');
+          usePosStore.getState().setCashier({
+            id: account.id,
+            name: account.name,
+            role: account.role === 'STORE_ADMIN' ? 'ADMIN' : 'STAFF',
+          });
 
           set({
             isAuthenticated: true,
@@ -101,11 +112,11 @@ export const useBrandAuthStore = create<BrandAuthState>()(
 
           // Role-based redirection per Master Specification:
           // Store Admin -> /shop/[storeSlug]/admin
-          // Store Staff -> /shop/[storeSlug]/pos
+          // Store Staff -> /pos/register (original POS system)
           const redirectUrl =
             account.role === 'STORE_ADMIN'
               ? `/shop/${storeSlug}/admin`
-              : `/shop/${storeSlug}/pos`;
+              : `/pos/register`;
 
           return { success: true, redirectUrl, role: account.role };
         }
@@ -182,16 +193,119 @@ export const useBrandAuthStore = create<BrandAuthState>()(
           currentRole: null,
           permissions: [],
         });
+        usePosStore.getState().setCashier({
+          id: 'staff-guest',
+          name: 'Store Associate',
+          role: 'STAFF',
+        });
       },
 
       checkSession: async () => {
         const state = get();
-        if (state.isAuthenticated && state.currentBrand) {
+        if (state.isAuthenticated && state.currentBrand && state.currentAccount) {
           usePosStore.getState().setActiveBrand(state.currentBrand.brandId, state.currentBrand.brandName);
+          usePosStore.getState().setCashier({
+            id: state.currentAccount.id,
+            name: state.currentAccount.name,
+            role:
+              state.currentRole === 'STORE_ADMIN' || state.currentRole === 'SUPER_ADMIN'
+                ? 'ADMIN'
+                : 'STAFF',
+          });
         } else {
-          const demoStore = await db.brands.where('brandId').equals('oursell').first().catch(() => null);
-          if (demoStore) {
-            usePosStore.getState().setActiveBrand(demoStore.brandId, demoStore.brandName);
+          // If unauthenticated or fresh session, reset store auth cleanly (do not auto-inject mock stores)
+          usePosStore.getState().setActiveBrand('', '');
+          usePosStore.getState().setCashier({
+            id: 'staff-guest',
+            name: 'Store Associate',
+            role: 'STAFF',
+          });
+          set({
+            isAuthenticated: false,
+            currentBrand: null,
+            currentAccount: null,
+            currentRole: null,
+            permissions: [],
+          });
+        }
+      },
+
+      switchToRole: async (targetRole: 'STORE_ADMIN' | 'STORE_STAFF') => {
+        const state = get();
+        const brandId = state.currentBrand?.brandId || 'oursell';
+
+        if (targetRole === 'STORE_ADMIN') {
+          let adminAcc = await db.accounts
+            .where('storeId')
+            .equals(brandId)
+            .and((a) => a.role === 'STORE_ADMIN')
+            .first()
+            .catch(() => null);
+
+          if (!adminAcc) {
+            adminAcc = await db.accounts.where('username').equals('oursell@admin').first().catch(() => null);
+          }
+
+          if (adminAcc) {
+            set({
+              isAuthenticated: true,
+              currentAccount: adminAcc,
+              currentRole: 'STORE_ADMIN',
+              permissions: ['all'],
+            });
+            usePosStore.getState().setCashier({
+              id: adminAcc.id,
+              name: adminAcc.name,
+              role: 'ADMIN',
+            });
+          } else {
+            set({
+              isAuthenticated: true,
+              currentRole: 'STORE_ADMIN',
+              permissions: ['all'],
+            });
+            usePosStore.getState().setCashier({
+              id: 'admin-fallback',
+              name: 'Store Administrator',
+              role: 'ADMIN',
+            });
+          }
+        } else {
+          let staffAcc = await db.accounts
+            .where('storeId')
+            .equals(brandId)
+            .and((a) => a.role === 'STORE_STAFF')
+            .first()
+            .catch(() => null);
+
+          if (!staffAcc) {
+            staffAcc = await db.accounts.where('username').equals('oursell@staff').first().catch(() => null);
+          }
+
+          const staffPerms: StaffPermission[] = ['pos_billing', 'customer_manage', 'invoice_print'];
+          if (staffAcc) {
+            set({
+              isAuthenticated: true,
+              currentAccount: staffAcc,
+              currentRole: 'STORE_STAFF',
+              permissions: staffAcc.permissions || staffPerms,
+            });
+            usePosStore.getState().setCashier({
+              id: staffAcc.id,
+              name: staffAcc.name,
+              role: 'STAFF',
+            });
+          } else {
+            set({
+              isAuthenticated: true,
+              currentRole: 'STORE_STAFF',
+              permissions: staffPerms,
+            });
+            usePosStore.getState().setCashier({
+              id: 'staff-fallback',
+              name: 'Store Cashier (Staff)',
+              role: 'STAFF',
+            });
           }
         }
       },

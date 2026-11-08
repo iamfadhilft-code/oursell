@@ -2,10 +2,14 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { db } from '@/db/posDb';
+import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { BusinessCategory, BrandApplication } from '@/types/pos';
-import { ArrowLeft, CheckCircle2, ShieldAlert, Store, User, Mail, Phone, Lock, Building, Check } from 'lucide-react';
+import { useDevCoreStore } from '@/store/useDevCoreStore';
+import { ArrowLeft, CheckCircle2, ShieldAlert, Store, User, Mail, Phone, Lock, Building, Check, Sparkles, ShieldCheck } from 'lucide-react';
 
 export default function RegisterBrandPage() {
+  const { isAuthenticated: isDevCoreAdmin } = useDevCoreStore();
+  const [isAutoActive, setIsAutoActive] = useState(false);
   const [brandName, setBrandName] = useState('');
   const [legalName, setLegalName] = useState('');
   const [category, setCategory] = useState<BusinessCategory>('Supermarket');
@@ -75,6 +79,35 @@ export default function RegisterBrandPage() {
       }
 
       const appId = `APP-${Math.floor(100000 + Math.random() * 900000)}`;
+
+      // If registered while authenticated as Dev Core Admin: AUTO-ACTIVATE IMMEDIATELY!
+      if (isDevCoreAdmin) {
+        const res = await useDevCoreStore.getState().createActiveStore({
+          brandName: brandName.trim(),
+          legalName: legalName.trim() || brandName.trim(),
+          businessCategory: category,
+          ownerName: ownerName.trim(),
+          email: trimmedEmail,
+          phone: phone.trim() || '+91 9800000000',
+          username: trimmedUser,
+          password: password,
+          pin: '1234',
+          outletCount: Number(outlets) || 1,
+          terminalCount: Number(terminals) || 1,
+          gstin: gstin.trim() || undefined,
+          businessAddress: address.trim() || undefined,
+        });
+
+        setIsSubmitting(false);
+        if (res.success) {
+          setSubmittedRef(res.brandId || appId);
+          setIsAutoActive(true);
+          return;
+        } else {
+          setErrorMsg(res.error || 'Registration failed');
+          return;
+        }
+      }
       const application: BrandApplication = {
         id: appId,
         brandName: brandName.trim(),
@@ -94,6 +127,59 @@ export default function RegisterBrandPage() {
       };
 
       await db.brand_applications.add(application);
+
+      // Mirror to Supabase Cloud if online
+      const supabase = getSupabaseBrowserClient();
+      if (supabase) {
+        try {
+          await supabase.from('brand_applications').insert({
+            brand_name: brandName.trim(),
+            requested_username: trimmedUser,
+            owner_name: ownerName.trim(),
+            email: trimmedEmail,
+            phone: phone.trim() || null,
+            business_category: category,
+            notes: `Legal: ${legalName.trim() || brandName.trim()} | Outlets: ${outlets} | Terminals: ${terminals} | GSTIN: ${gstin.trim() || 'N/A'}`,
+            status: 'PENDING',
+          });
+
+          await supabase.from('support_inbox').insert({
+            store_name: brandName.trim(),
+            sender_email: trimmedEmail,
+            subject: `[New Shop Registration] Activation Request: ${brandName.trim()}`,
+            message: `New retail store onboarding request submitted for ${brandName.trim()} by ${ownerName.trim()}.`,
+            priority: 'HIGH',
+            status: 'OPEN',
+          });
+        } catch (cloudErr) {
+          console.warn('Could not mirror application to Supabase:', cloudErr);
+        }
+      }
+
+      // Route directly to Dev Core Inbox
+      await db.support_inbox.add({
+        id: `ticket-${appId}`,
+        storeId: appId,
+        storeName: brandName.trim(),
+        senderName: ownerName.trim(),
+        senderEmail: trimmedEmail,
+        subject: `[New Shop Registration] Activation Request: ${brandName.trim()}`,
+        message: `New retail store onboarding request submitted via "Get Started" portal.\n\n` +
+          `• Brand: ${brandName.trim()} (${category})\n` +
+          `• Legal Name: ${legalName.trim() || brandName.trim()}\n` +
+          `• Owner: ${ownerName.trim()} (${phone.trim()})\n` +
+          `• Requested Username: ${trimmedUser}\n` +
+          `• Outlets: ${Number(outlets) || 1} | POS Terminals: ${Number(terminals) || 1}\n` +
+          `• GSTIN: ${gstin.trim() || 'N/A'}\n` +
+          `• Business Address: ${address.trim() || 'N/A'}\n\n` +
+          `Please review application in Dev Core Inbox to Activate or Reject this shop.`,
+        status: 'UNREAD',
+        priority: 'HIGH',
+        replies: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
       setIsSubmitting(false);
       setSubmittedRef(appId);
     } catch (err: unknown) {
@@ -128,33 +214,69 @@ export default function RegisterBrandPage() {
         {/* Confirmation State */}
         {submittedRef ? (
           <div className="bg-slate-900 border border-teal-500/30 rounded-3xl p-8 text-center space-y-4 shadow-2xl">
-            <div className="w-16 h-16 rounded-3xl bg-teal-500/20 text-teal-400 flex items-center justify-center mx-auto mb-2">
-              <CheckCircle2 className="w-8 h-8" />
-            </div>
-            <h2 className="text-2xl font-black text-white">Application Submitted!</h2>
-            <p className="text-sm text-slate-300 max-w-md mx-auto">
-              Your application has been registered with reference code:
-            </p>
-            <div className="inline-block px-4 py-2 bg-slate-800 text-teal-400 font-mono font-black text-lg rounded-xl border border-teal-500/40">
-              {submittedRef}
-            </div>
-            <p className="text-xs text-slate-400 max-w-lg mx-auto leading-relaxed pt-2">
-              It has been routed to <strong>Dev Core Administration</strong> for verification. Once approved, you will be able to log in to your dedicated POS register.
-            </p>
-            <div className="pt-4 flex justify-center gap-3">
-              <Link
-                href="/devcore"
-                className="px-5 py-2.5 bg-cyan-950 text-cyan-400 border border-cyan-800 hover:bg-cyan-900 rounded-xl text-xs font-bold transition"
-              >
-                Go to Dev Core to Review & Approve
-              </Link>
-              <Link
-                href="/login-brand"
-                className="px-5 py-2.5 bg-teal-500 text-slate-950 hover:bg-teal-400 rounded-xl text-xs font-black transition"
-              >
-                Go to Brand Login
-              </Link>
-            </div>
+            {isAutoActive ? (
+              <>
+                <div className="w-16 h-16 rounded-3xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto mb-2 border border-emerald-500/40">
+                  <ShieldCheck className="w-8 h-8" />
+                </div>
+                <h2 className="text-2xl font-black text-white">Store Created & Auto-Activated!</h2>
+                <p className="text-sm text-slate-300 max-w-md mx-auto">
+                  Because you are signed in as Dev Core Admin, this store has been <strong className="text-emerald-400 font-bold">INSTANTLY ACTIVATED</strong> in production.
+                </p>
+                <div className="inline-block px-4 py-2 bg-slate-800 text-emerald-400 font-mono font-black text-lg rounded-xl border border-emerald-500/40">
+                  Store ID: {submittedRef}
+                </div>
+                <div className="pt-4 flex flex-wrap items-center justify-center gap-3">
+                  <Link
+                    href={`/shop/${submittedRef}`}
+                    className="px-6 py-2.5 bg-emerald-500 text-slate-950 hover:bg-emerald-400 rounded-xl text-xs font-black transition shadow-lg shadow-emerald-500/20 inline-flex items-center justify-center gap-1.5"
+                  >
+                    <span>Visit Store POS Workspace &rarr;</span>
+                  </Link>
+                  <Link
+                    href="/devcore"
+                    className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-bold transition border border-white/10 inline-flex items-center justify-center cursor-pointer"
+                  >
+                    Return to Dev Core Console
+                  </Link>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="w-16 h-16 rounded-3xl bg-teal-500/20 text-teal-400 flex items-center justify-center mx-auto mb-2">
+                  <CheckCircle2 className="w-8 h-8" />
+                </div>
+                <h2 className="text-2xl font-black text-white">Sent to Dev Core Inbox!</h2>
+                <p className="text-sm text-slate-300 max-w-md mx-auto">
+                  Your shop registration has been routed directly into the <span className="text-teal-400 font-bold">Dev Core Inbox</span> with reference:
+                </p>
+                <div className="inline-block px-4 py-2 bg-slate-800 text-teal-400 font-mono font-black text-lg rounded-xl border border-teal-500/40">
+                  {submittedRef}
+                </div>
+                <div className="pt-4 flex flex-wrap items-center justify-center gap-3">
+                  <Link
+                    href="/login"
+                    className="px-6 py-2.5 bg-emerald-500 text-slate-950 hover:bg-emerald-400 rounded-xl text-xs font-black transition shadow-lg shadow-emerald-500/20 inline-flex items-center justify-center"
+                  >
+                    Store Login &rarr;
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSubmittedRef(null);
+                      setBrandName('');
+                      setLegalName('');
+                      setUsername('');
+                      setPassword('');
+                      setConfirmPassword('');
+                    }}
+                    className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-bold transition border border-white/10 inline-flex items-center justify-center cursor-pointer"
+                  >
+                    Register Another Shop
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         ) : (
           /* Form State */
@@ -169,6 +291,15 @@ export default function RegisterBrandPage() {
               </p>
             </div>
 
+            {isDevCoreAdmin && (
+              <div className="mb-6 p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2.5">
+                <ShieldCheck className="w-5 h-5 shrink-0 text-emerald-400" />
+                <span>
+                  <strong>⚡ Dev Core Direct Mode:</strong> Because you are signed in to Dev Core, submitting this form will <strong>AUTO-ACTIVATE</strong> your store immediately without waiting for review.
+                </span>
+              </div>
+            )}
+
             {errorMsg && (
               <div className="mb-6 p-3 bg-red-950/50 border border-red-500/30 rounded-xl text-red-400 text-xs flex items-center gap-2">
                 <ShieldAlert className="w-4 h-4 shrink-0" />
@@ -176,7 +307,10 @@ export default function RegisterBrandPage() {
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+            <form onSubmit={handleSubmit} autoComplete="off" className="space-y-4 text-xs">
+              {/* Anti-autofill decoy inputs */}
+              <input type="text" name="decoy_brand_reg_user" tabIndex={-1} style={{ display: 'none' }} autoComplete="off" />
+              <input type="password" name="decoy_brand_reg_pass" tabIndex={-1} style={{ display: 'none' }} autoComplete="off" />
               {/* Brand & Category */}
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
@@ -316,6 +450,12 @@ export default function RegisterBrandPage() {
                     <label className="block font-bold text-slate-300 mb-1">Requested Username *</label>
                     <input
                       type="text"
+                      name="new_brand_request_user"
+                      autoComplete="off"
+                      autoCapitalize="off"
+                      spellCheck="false"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
                       required
                       placeholder="e.g. luxeadmin"
                       value={username}
@@ -327,6 +467,10 @@ export default function RegisterBrandPage() {
                     <label className="block font-bold text-slate-300 mb-1">Password *</label>
                     <input
                       type="password"
+                      name="new_brand_request_pass"
+                      autoComplete="new-password"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
                       required
                       placeholder="••••••••"
                       value={password}
@@ -338,6 +482,10 @@ export default function RegisterBrandPage() {
                     <label className="block font-bold text-slate-300 mb-1">Confirm Password *</label>
                     <input
                       type="password"
+                      name="new_brand_request_conf"
+                      autoComplete="new-password"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
                       required
                       placeholder="••••••••"
                       value={confirmPassword}

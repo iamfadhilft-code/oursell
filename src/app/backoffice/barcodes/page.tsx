@@ -190,8 +190,9 @@ export default function BarcodeStudioPage() {
 
     const printItems = selectedProds.map((p) => {
       let bType: BarcodeType = 'CODE128';
-      if (p.barcode && p.barcode.length === 13) bType = 'EAN13';
+      if (p.barcode && (p.barcode.length === 13 || (p.barcode.length === 12 && p.barcode.startsWith('890')))) bType = 'EAN13';
       else if (p.barcode && p.barcode.length === 8) bType = 'EAN8';
+      else if (p.barcode && p.barcode.length === 12) bType = 'UPCA';
 
       return {
         barcodeValue: p.barcode || generateCompliantBarcode('CODE128'),
@@ -490,7 +491,7 @@ export default function BarcodeStudioPage() {
                             {hasBarcode ? (
                               <div className="w-32 bg-white p-1 rounded border border-slate-200 shadow-2xs">
                                 <BarcodeRenderer
-                                  type={prod.barcode.length === 13 ? 'EAN13' : 'CODE128'}
+                                  type={prod.barcode.length === 13 || (prod.barcode.length === 12 && prod.barcode.startsWith('890')) ? 'EAN13' : 'CODE128'}
                                   value={prod.barcode}
                                   width={0.9}
                                   height={22}

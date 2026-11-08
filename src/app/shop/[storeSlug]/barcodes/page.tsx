@@ -143,6 +143,7 @@ export default function StoreBarcodeStudioPage() {
         barcodeValue: bValue || prod.barcode || barcodeValue,
         barcodeType,
         sellingPrice: prod.sellingPrice,
+        productSku: prod.sku,
         sku: prod.sku,
         quantity: 1,
       },
@@ -176,7 +177,7 @@ export default function StoreBarcodeStudioPage() {
 
         <div className="flex items-center gap-3">
           <Link
-            href={`/shop/${storeSlug}/pos`}
+            href="/pos/register"
             className="px-3.5 py-1.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
           >
             <span>Open POS</span>

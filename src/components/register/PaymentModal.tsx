@@ -2,8 +2,10 @@
 import React, { useState } from 'react';
 import { usePosStore } from '@/store/usePosStore';
 import { PaymentMethod, Order } from '@/types/pos';
-import { Banknote, CreditCard, QrCode, BookOpen, Layers, X, Check, AlertCircle } from 'lucide-react';
+import { Banknote, CreditCard, QrCode, BookOpen, Layers, X, Check, AlertCircle, Lock } from 'lucide-react';
 import { translations } from '@/lib/i18n';
+import { usePlanAccess } from '@/hooks/usePlanAccess';
+import { PlanGateModal } from '@/components/pricing/PlanGateModal';
 
 interface PaymentModalProps {
   isOpen: boolean;
@@ -18,7 +20,12 @@ export function PaymentModal({ isOpen, onClose, onSuccess }: PaymentModalProps) 
     selectedCustomer,
     currency,
     language,
+    activeBrandId,
   } = usePosStore();
+
+  const { planName, checkFeature } = usePlanAccess(activeBrandId);
+  const khataFeature = checkFeature('customer_khata');
+  const [isKhataGateOpen, setIsKhataGateOpen] = useState(false);
 
   const t = translations[language];
   const { grandTotal } = getTotals();
@@ -55,6 +62,11 @@ export function PaymentModal({ isOpen, onClose, onSuccess }: PaymentModalProps) 
     }
 
     if (activeMethod === 'KHATA') {
+      if (!khataFeature.allowed) {
+        setIsKhataGateOpen(true);
+        setErrorMsg('Customer Khata & Credit Ledger requires Professional or Enterprise subscription.');
+        return;
+      }
       if (!selectedCustomer) {
         setErrorMsg('Please select or link a customer first to charge to Khata / Store Credit');
         return;
@@ -154,15 +166,34 @@ export function PaymentModal({ isOpen, onClose, onSuccess }: PaymentModalProps) 
             <span>{t.card}</span>
           </button>
           <button
-            onClick={() => setActiveMethod('KHATA')}
-            className={`py-2.5 px-2 rounded-xl text-xs font-bold flex flex-col items-center gap-1 transition ${
-              activeMethod === 'KHATA'
+            onClick={() => {
+              if (!khataFeature.allowed) {
+                setIsKhataGateOpen(true);
+                return;
+              }
+              setActiveMethod('KHATA');
+            }}
+            className={`py-2.5 px-2 rounded-xl text-xs font-bold flex flex-col items-center gap-1 transition relative ${
+              !khataFeature.allowed
+                ? 'bg-amber-50/70 text-amber-800 hover:bg-amber-100/70'
+                : activeMethod === 'KHATA'
                 ? 'bg-teal-600 text-white shadow-sm'
                 : 'bg-white text-slate-600 hover:bg-slate-50'
             }`}
           >
-            <BookOpen className="w-4 h-4" />
-            <span>{t.khata}</span>
+            {!khataFeature.allowed ? (
+              <Lock className="w-4 h-4 text-amber-600" />
+            ) : (
+              <BookOpen className="w-4 h-4" />
+            )}
+            <div className="flex items-center gap-1">
+              <span>{t.khata}</span>
+              {!khataFeature.allowed && (
+                <span className="text-[9px] bg-amber-200 text-amber-900 px-1 rounded font-black">
+                  PRO
+                </span>
+              )}
+            </div>
           </button>
           <button
             onClick={() => {
@@ -414,6 +445,15 @@ export function PaymentModal({ isOpen, onClose, onSuccess }: PaymentModalProps) 
           </button>
         </div>
       </div>
+
+      <PlanGateModal
+        isOpen={isKhataGateOpen}
+        onClose={() => setIsKhataGateOpen(false)}
+        title="Customer Khata & Credit Ledger"
+        description="Allow approved customers to make purchases on store credit, track outstanding balances, and record payments directly from the POS register."
+        requiredPlan="Professional"
+        currentPlan={planName}
+      />
     </div>
   );
 }

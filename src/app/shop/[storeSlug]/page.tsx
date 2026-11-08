@@ -28,6 +28,7 @@ import {
   Plus,
   RefreshCw,
   Lock,
+  Truck,
 } from 'lucide-react';
 
 export default function StoreHomePage() {
@@ -225,7 +226,7 @@ export default function StoreHomePage() {
 
           <div className="flex items-center gap-3">
             <Link
-              href={`/shop/${storeSlug}/pos`}
+              href="/pos/register"
               className="px-4 py-2.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs"
             >
               <ShoppingCart className="w-4 h-4" />
@@ -306,7 +307,7 @@ export default function StoreHomePage() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* New Sale POS */}
             <Link
-              href={`/shop/${storeSlug}/pos`}
+              href="/pos/register"
               className="bg-white border border-slate-200 hover:border-teal-500/50 rounded-2xl p-5 transition shadow-xs group flex items-start gap-4"
             >
               <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
@@ -323,7 +324,7 @@ export default function StoreHomePage() {
               </div>
             </Link>
 
-            {/* Inventory Management */}
+            {/* Products & Inventory */}
             <Link
               href="/backoffice/inventory"
               className="bg-white border border-slate-200 hover:border-blue-500/50 rounded-2xl p-5 transition shadow-xs group flex items-start gap-4"
@@ -337,7 +338,30 @@ export default function StoreHomePage() {
                   <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-blue-700 transition" />
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
-                  Manage SKUs, variants, stock adjustments, and supplier purchase orders.
+                  {isAdmin
+                    ? 'Full catalog control: Add, edit, delete SKUs, price tiers & stock adjustments.'
+                    : 'Search products, verify real-time stock levels and customer pricing.'}
+                </p>
+              </div>
+            </Link>
+
+            {/* Suppliers & Purchasing */}
+            <Link
+              href="/backoffice/purchasing"
+              className="bg-white border border-slate-200 hover:border-teal-500/50 rounded-2xl p-5 transition shadow-xs group flex items-start gap-4"
+            >
+              <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
+                <Truck className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-sm text-slate-900">Suppliers & Purchasing</h4>
+                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-teal-700 transition" />
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  {isAdmin
+                    ? 'Vendor management: Add, edit, delete suppliers, payment terms & purchase orders.'
+                    : 'Inspect vendor list and receive inward deliveries (GRN) to restock inventory.'}
                 </p>
               </div>
             </Link>

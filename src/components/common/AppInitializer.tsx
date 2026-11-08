@@ -2,14 +2,48 @@
 import { useEffect } from 'react';
 import { useInitializeDb } from '@/hooks/useInitializeDb';
 import { useBrandAuthStore } from '@/store/useBrandAuthStore';
+import { usePosStore } from '@/store/usePosStore';
 
 export function AppInitializer({ children }: { children: React.ReactNode }) {
   const { isReady, error } = useInitializeDb();
   const checkSession = useBrandAuthStore((s) => s.checkSession);
 
+  // Global physical network connectivity listener
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleOnline = () => {
+      console.log('[OURSELL POS] Browser detected network: ONLINE');
+      usePosStore.getState().setNetworkConnected(true);
+    };
+
+    const handleOffline = () => {
+      console.log('[OURSELL POS] Browser detected network: OFFLINE');
+      usePosStore.getState().setNetworkConnected(false);
+    };
+
+    // Initialize physical status
+    usePosStore.getState().setNetworkConnected(navigator.onLine);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   useEffect(() => {
     if (isReady) {
       checkSession();
+      // Initialize pending sync count and auto-sync if connected
+      const posState = usePosStore.getState();
+      posState.refreshPendingSyncCount().then((count) => {
+        if (count > 0 && posState.isOnline && typeof navigator !== 'undefined' && navigator.onLine) {
+          posState.syncNow().catch((e) => console.warn('Initial sync deferred:', e));
+        }
+      });
     }
   }, [isReady, checkSession]);
 

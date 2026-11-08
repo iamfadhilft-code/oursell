@@ -10,13 +10,45 @@ export type BusinessCategory =
   | 'Restaurant'
   | 'Cafe'
   | 'General Retail'
-  | 'Specialty Gift';
+  | 'Specialty Gift'
+  | 'Administration';
 
 export type ApplicationStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'UNDER_REVIEW' | 'SUSPENDED';
 
 export type BrandStatus = 'ACTIVE' | 'SUSPENDED';
 
-export type PlanTier = 'Starter' | 'Growth' | 'Professional' | 'Enterprise';
+export type PlanTier = 'Starter' | 'Professional' | 'Enterprise' | 'Multi-Chain Enterprise';
+
+export interface PricingPlan {
+  id: string; // 'starter' | 'professional' | 'enterprise'
+  name: string;
+  badge?: string; // 'MOST POPULAR'
+  description: string;
+  monthlyPrice: number;
+  annualPrice: number;
+  staffLimit: number; // 1, 3, 5
+  outletLimit: number | null; // 1, 3, null (Unlimited)
+  terminalLimit: number | null; // 2, 6, null (Unlimited)
+  productLimit: number | null; // 1000, null (Unlimited)
+  features: string[];
+  isActive: boolean;
+  sortOrder: number;
+  updatedAt?: string;
+}
+
+export interface PlanEnquiry {
+  id: string;
+  planId?: string;
+  planName: string;
+  billingCycle: 'MONTHLY' | 'ANNUAL';
+  price: number;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  message?: string;
+  status: 'NEW' | 'CONTACTED' | 'CONVERTED' | 'CLOSED';
+  createdAt: string;
+}
 
 export interface BrandApplication {
   id: string;
@@ -35,6 +67,9 @@ export interface BrandApplication {
   status: ApplicationStatus;
   appliedAt: string;
   rejectionReason?: string;
+  brandId?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
 }
 
 export interface Brand {
@@ -131,6 +166,7 @@ export interface Order {
   status: 'COMPLETED' | 'HELD' | 'REFUNDED' | 'CANCELLED';
   notes?: string;
   createdAt: string;
+  syncedToCloud?: boolean;
 }
 
 export interface Customer {
@@ -224,6 +260,7 @@ export interface StoreExpense {
   notes: string;
   paidByCashier: string;
   createdAt: string;
+  syncedToCloud?: boolean;
 }
 
 export interface Promotion {
@@ -252,6 +289,7 @@ export type StaffPermission =
   | 'invoice_print'
   | 'discount_approve'
   | 'staff_manage'
+  | 'supplier_manage'
   | 'settings_manage';
 
 export interface StoreAccount {
@@ -340,4 +378,6 @@ export interface DevCoreAdmin {
   username: string;
   role: 'SUPER_ADMIN';
 }
+
+export * from './devcore';
 

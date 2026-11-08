@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Customer } from '@/types/pos';
 import { db } from '@/db/posDb';
 import { usePosStore } from '@/store/usePosStore';
+import { useRoleAccess } from '@/hooks/useRoleAccess';
 import { Search, UserPlus, Phone, Mail, Award, X, Check } from 'lucide-react';
 
 interface CustomerModalProps {
@@ -13,6 +14,7 @@ interface CustomerModalProps {
 
 export function CustomerModal({ isOpen, onClose, onSelectCustomer }: CustomerModalProps) {
   const { activeBrandId, currency } = usePosStore();
+  const { isAdmin } = useRoleAccess();
   const [searchTerm, setSearchTerm] = useState('');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isAddingNew, setIsAddingNew] = useState(false);
@@ -44,6 +46,10 @@ export function CustomerModal({ isOpen, onClose, onSelectCustomer }: CustomerMod
 
   const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isAdmin) {
+      alert('Permission Denied: Only Store Administrators can register new customers.');
+      return;
+    }
     if (!newName.trim() || !newPhone.trim()) return;
 
     const newCust: Customer = {
@@ -99,20 +105,24 @@ export function CustomerModal({ isOpen, onClose, onSelectCustomer }: CustomerMod
                   autoFocus
                 />
               </div>
-              <button
-                onClick={() => setIsAddingNew(true)}
-                className="px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shrink-0"
-              >
-                <UserPlus className="w-4 h-4" />
-                New
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={() => setIsAddingNew(true)}
+                  className="px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shrink-0"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  New
+                </button>
+              )}
             </div>
 
             {/* Customers List */}
             <div className="space-y-2 mt-2">
               {filtered.length === 0 ? (
                 <div className="text-center py-8 text-slate-400 text-xs">
-                  No customers found. Click &quot;New&quot; to create one.
+                  {isAdmin
+                    ? 'No customers found. Click "New" to create one.'
+                    : 'No customers found matching search.'}
                 </div>
               ) : (
                 filtered.map((cust) => (

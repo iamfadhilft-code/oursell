@@ -1,7 +1,12 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { StoreDiscoveryModal } from '@/components/discovery/StoreDiscoveryModal';
+import { RegisterConnectionModal } from '@/components/registration/RegisterConnectionModal';
+import { PlanContactModal } from '@/components/pricing/PlanContactModal';
+import { PricingPlan } from '@/types/pos';
+import { BarcodeRenderer } from '@/components/barcodes/BarcodeRenderer';
 import {
   ShoppingCart,
   ShieldCheck,
@@ -27,11 +32,85 @@ import {
   Barcode,
   BarChart3,
   Globe2,
-  Store,
   ChevronDown,
   Building2,
   Sparkles,
 } from 'lucide-react';
+
+const DEFAULT_PRICING_PLANS: PricingPlan[] = [
+  {
+    id: 'starter',
+    name: 'Starter Plan',
+    description: 'Perfect for small stores and startups.',
+    monthlyPrice: 0,
+    annualPrice: 0,
+    staffLimit: 1,
+    outletLimit: 1,
+    terminalLimit: 2,
+    productLimit: 1000,
+    features: [
+      '1 Staff',
+      '1 Store Outlet',
+      '2 POS Terminals',
+      'Full POS Billing',
+      'Offline Billing',
+      'Barcode Studio',
+      '80mm Thermal Receipts',
+      'Up to 1,000 Products',
+    ],
+    isActive: true,
+    sortOrder: 1,
+  },
+  {
+    id: 'professional',
+    name: 'Professional',
+    badge: 'MOST POPULAR',
+    description: 'Ideal for supermarkets, restaurants and multi-counter outlets.',
+    monthlyPrice: 799,
+    annualPrice: 7990,
+    staffLimit: 3,
+    outletLimit: 3,
+    terminalLimit: 6,
+    productLimit: null,
+    features: [
+      'Up to 3 Staff',
+      'Up to 3 Outlets',
+      '6 POS Terminals',
+      'Unlimited Products',
+      'Customer Khata & Credit Ledger',
+      'Purchase Orders',
+      'Supplier Management',
+      'Advanced Inventory & Reports',
+      'English, Malayalam & Arabic',
+    ],
+    isActive: true,
+    sortOrder: 2,
+  },
+  {
+    id: 'enterprise',
+    name: 'Multi-Chain Enterprise',
+    description: 'For retail chains, franchises and regional networks.',
+    monthlyPrice: 3299,
+    annualPrice: 32990,
+    staffLimit: 5, // Strict maximum 5 staff accounts
+    outletLimit: null,
+    terminalLimit: null,
+    productLimit: null,
+    features: [
+      'Up to 5 Staff',
+      'Unlimited Outlets',
+      'Unlimited POS Terminals',
+      'Unlimited Products',
+      'Centralized Fleet Management',
+      'Dedicated Database Isolation',
+      'Custom Domain',
+      'Advanced Permissions',
+      '24/7 Priority Support',
+    ],
+    isActive: true,
+    sortOrder: 3,
+  },
+];
 
 export default function HomePage() {
   const router = useRouter();
@@ -41,10 +120,35 @@ export default function HomePage() {
 
   // Connect Store Node Modal State (Reference Screenshot 2)
   const [isStoreNodeModalOpen, setIsStoreNodeModalOpen] = useState(false);
-  const [storeSlugInput, setStoreSlugInput] = useState('');
 
-  // Interactive FAQ State
-  const [activeFaq, setActiveFaq] = useState<number | null>(0);
+  // Register Connection Modal State (Reference Screenshot 2 - "Get started" UI)
+  const [isRegisterConnectionOpen, setIsRegisterConnectionOpen] = useState(false);
+
+  // Pricing Plans State & Billing Cycle Toggle (Monthly vs Annual)
+  const [billingCycle, setBillingCycle] = useState<'MONTHLY' | 'ANNUAL'>('MONTHLY');
+  const [pricingPlans, setPricingPlans] = useState<PricingPlan[]>(DEFAULT_PRICING_PLANS);
+  const [selectedContactPlan, setSelectedContactPlan] = useState<PricingPlan | null>(null);
+  const [isPlanContactModalOpen, setIsPlanContactModalOpen] = useState(false);
+
+  // Fetch configured plans from Dev Core / Supabase on mount
+  useEffect(() => {
+    fetch('/api/plans')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.plans) && data.plans.length > 0) {
+          setPricingPlans(data.plans);
+        }
+      })
+      .catch((e) => console.warn('Could not load remote plans, using defaults:', e));
+  }, []);
+
+  const handleOpenContact = (plan: PricingPlan) => {
+    setSelectedContactPlan(plan);
+    setIsPlanContactModalOpen(true);
+  };
+
+  // Interactive FAQ State (default expanded item: 1)
+  const [activeFaq, setActiveFaq] = useState<number | null>(1);
 
   // Translations for Key Hero & Navigation Elements
   const translations = {
@@ -56,7 +160,7 @@ export default function HomePage() {
         'Manage your products, inventory, billing and business operations from one powerful retail platform.',
       ctaPrimary: 'Explore Oursell',
       ctaSecondary: 'Login to Your Store',
-      locateShop: 'Connect Store Node',
+      locateShop: 'Connect to Your Store',
       watchDemo: 'Interactive Demo',
       features: 'Features',
       solutions: 'Solutions',
@@ -107,118 +211,91 @@ export default function HomePage() {
   const t = translations[lang];
   const isRtl = lang === 'ar';
 
-  const handleConnectStoreNode = (e: React.FormEvent) => {
-    e.preventDefault();
-    const slug = storeSlugInput.trim().toLowerCase();
-    if (slug) {
-      setIsStoreNodeModalOpen(false);
-      router.push(`/shop/${slug}`);
-    }
-  };
-
   return (
     <div
       dir={isRtl ? 'rtl' : 'ltr'}
       className="min-h-screen bg-[#080B0B] text-[#F8FAFC] font-sans selection:bg-[#10B981] selection:text-slate-950 overflow-x-hidden"
     >
-      {/* 1. STICKY TOP NAVIGATION BAR */}
-      <header className="sticky top-0 z-50 bg-[#080B0B]/90 backdrop-blur-md border-b border-[#252F2D] px-6 py-3.5 flex items-center justify-between">
-        {/* Brand Logo */}
-        <div className="flex items-center gap-3">
-          <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#10B981] to-[#C4F12A] flex items-center justify-center text-slate-950 font-black text-xl shadow-lg shadow-[#10B981]/20 group-hover:scale-105 transition">
-              O
-            </div>
-            <div>
-              <span className="font-black text-lg tracking-wider text-[#F8FAFC] block leading-tight">
-                OURSELL
-              </span>
-              <span className="text-[10px] font-mono tracking-widest text-[#10B981] uppercase block font-bold">
-                RETAIL OS v3.0
-              </span>
-            </div>
-          </Link>
-        </div>
+      {/* 1. FLOATING PILL TOP NAVIGATION BAR (Exact match to Reference Screenshot 1) */}
+      <div className="sticky top-3 sm:top-5 z-50 w-full px-3 sm:px-6 max-w-7xl mx-auto">
+        <header className="bg-[#070908]/90 backdrop-blur-md border border-[#1f2824] shadow-[0_10px_35px_rgba(0,0,0,0.7)] rounded-full px-4 sm:px-6 py-2 sm:py-2.5 flex items-center justify-between gap-3">
+          {/* Nav Links */}
+          <nav className="flex items-center gap-5 sm:gap-7 text-xs font-bold tracking-wider overflow-x-auto py-1">
+            <a href="#features" className="text-neutral-300 hover:text-white transition uppercase whitespace-nowrap">
+              FEATURES
+            </a>
+            <a href="#roi" className="text-neutral-300 hover:text-white transition uppercase whitespace-nowrap">
+              ROI
+            </a>
+            <a href="#pricing" className="text-neutral-300 hover:text-white transition uppercase whitespace-nowrap">
+              PRICING
+            </a>
+            <a href="#faq" className="text-neutral-300 hover:text-white transition uppercase whitespace-nowrap">
+              FAQ
+            </a>
+            <a
+              href="#contact"
+              className="text-[#00c957] hover:text-[#34d399] transition uppercase font-black whitespace-nowrap"
+            >
+              ENQUIRY
+            </a>
+          </nav>
 
-        {/* Center Nav Links */}
-        <nav className="hidden lg:flex items-center gap-8 text-xs font-semibold text-[#94A3B8]">
-          <a href="#features" className="hover:text-[#F8FAFC] transition">
-            {t.features}
-          </a>
-          <a href="#solutions" className="hover:text-[#F8FAFC] transition">
-            {t.solutions}
-          </a>
-          <a href="#billing" className="hover:text-[#F8FAFC] transition">
-            POS Billing
-          </a>
-          <a href="#barcodes" className="hover:text-[#F8FAFC] transition">
-            Barcode Studio
-          </a>
-          <a href="#pricing" className="hover:text-[#F8FAFC] transition">
-            {t.pricing}
-          </a>
-          <a href="#contact" className="hover:text-[#F8FAFC] transition">
-            {t.contact}
-          </a>
-        </nav>
+          {/* Right Controls: Language Selector Pill, Locate Shop, Get started */}
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* Language Selector Pill */}
+            <div className="flex items-center bg-[#0d1210] border border-[#1f2824] rounded-full p-1 text-xs">
+              <button
+                onClick={() => setLang('en')}
+                className={`px-2.5 sm:px-3 py-1 rounded-full font-bold transition text-[11px] cursor-pointer ${
+                  lang === 'en'
+                    ? 'bg-[#00c957] text-slate-950 shadow-md shadow-[#00c957]/20'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                EN
+              </button>
+              <button
+                onClick={() => setLang('ml')}
+                className={`px-2 sm:px-2.5 py-1 rounded-full font-bold transition text-[11px] cursor-pointer ${
+                  lang === 'ml'
+                    ? 'bg-[#00c957] text-slate-950 shadow-md shadow-[#00c957]/20'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                മലയാളം
+              </button>
+              <button
+                onClick={() => setLang('ar')}
+                className={`px-2 sm:px-2.5 py-1 rounded-full font-bold transition text-[11px] cursor-pointer ${
+                  lang === 'ar'
+                    ? 'bg-[#00c957] text-slate-950 shadow-md shadow-[#00c957]/20'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                العربية
+              </button>
+            </div>
 
-        {/* Right Section: Language Picker, Connect Node & Login */}
-        <div className="flex items-center gap-3">
-          {/* Language Selector Pill */}
-          <div className="flex items-center bg-[#151D1C] border border-[#252F2D] rounded-xl p-1 text-xs">
+            {/* Locate Shop Button */}
             <button
-              onClick={() => setLang('en')}
-              className={`px-2 py-0.5 rounded-lg font-bold transition text-[11px] ${
-                lang === 'en' ? 'bg-[#10B981] text-slate-950 shadow' : 'text-[#94A3B8]'
-              }`}
+              onClick={() => setIsStoreNodeModalOpen(true)}
+              className="hidden md:flex items-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full border border-neutral-700 hover:border-neutral-500 bg-[#0d1210]/60 hover:bg-[#141b18] text-white text-xs font-bold transition cursor-pointer"
             >
-              EN
+              <Search className="w-3.5 h-3.5 text-white stroke-[2.5]" />
+              <span>Locate Shop</span>
             </button>
+
+            {/* Get started Button (Exact UI match to Screenshot 1 & triggers Screenshot 2 modal) */}
             <button
-              onClick={() => setLang('ml')}
-              className={`px-2 py-0.5 rounded-lg font-bold transition text-[11px] ${
-                lang === 'ml' ? 'bg-[#10B981] text-slate-950 shadow' : 'text-[#94A3B8]'
-              }`}
+              onClick={() => setIsRegisterConnectionOpen(true)}
+              className="px-4 sm:px-5 py-2 sm:py-2.5 rounded-full bg-[#00c957] hover:bg-[#00b84f] active:scale-95 text-slate-950 text-xs sm:text-sm font-bold shadow-lg shadow-[#00c957]/25 transition flex items-center justify-center cursor-pointer whitespace-nowrap"
             >
-              മലയാളം
-            </button>
-            <button
-              onClick={() => setLang('ar')}
-              className={`px-2 py-0.5 rounded-lg font-bold transition text-[11px] ${
-                lang === 'ar' ? 'bg-[#10B981] text-slate-950 shadow' : 'text-[#94A3B8]'
-              }`}
-            >
-              العربية
+              <span>Get started</span>
             </button>
           </div>
-
-          {/* Connect to Store Node Button (Reference Screenshot 2) */}
-          <button
-            onClick={() => setIsStoreNodeModalOpen(true)}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#151D1C] hover:bg-[#1f2a29] text-[#F8FAFC] text-xs font-semibold border border-[#252F2D] transition"
-          >
-            <Search className="w-3.5 h-3.5 text-[#10B981]" />
-            <span>{t.locateShop}</span>
-          </button>
-
-          {/* Login Button */}
-          <Link
-            href="/login"
-            className="px-4 py-2 rounded-xl bg-[#151D1C] hover:bg-[#1f2a29] text-[#F8FAFC] text-xs font-bold border border-[#252F2D] transition"
-          >
-            {t.login}
-          </Link>
-
-          {/* Get Started Button */}
-          <Link
-            href="/register-brand"
-            className="px-4 py-2 rounded-xl bg-[#10B981] hover:bg-[#10B981]/90 text-slate-950 text-xs font-black shadow-md shadow-[#10B981]/20 transition flex items-center gap-1.5"
-          >
-            <span>{t.getStarted}</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
-        </div>
-      </header>
+        </header>
+      </div>
 
       {/* 2. HERO SECTION (Reference Screenshot 3 & 4) */}
       <section className="relative pt-20 pb-20 px-6 max-w-7xl mx-auto flex flex-col items-center text-center">
@@ -243,26 +320,19 @@ export default function HomePage() {
 
         {/* Hero CTAs */}
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3.5 text-xs font-bold">
-          <a
-            href="#features"
-            className="px-6 py-3.5 rounded-xl bg-[#10B981] hover:bg-[#10B981]/90 text-slate-950 font-black shadow-xl shadow-[#10B981]/20 transition flex items-center gap-2"
+          <button
+            onClick={() => setIsRegisterConnectionOpen(true)}
+            className="px-6 py-3.5 rounded-full bg-[#00c957] hover:bg-[#00b84f] text-slate-950 font-black shadow-xl shadow-[#00c957]/20 transition flex items-center gap-2 cursor-pointer"
           >
-            <span>{t.ctaPrimary}</span>
-            <ArrowRight className="w-4 h-4" />
-          </a>
-          <Link
-            href="/login"
-            className="px-6 py-3.5 rounded-xl bg-[#151D1C] hover:bg-[#1f2a29] text-[#F8FAFC] border border-[#252F2D] transition flex items-center gap-2"
-          >
-            <Store className="w-4 h-4 text-[#10B981]" />
-            <span>{t.ctaSecondary}</span>
-          </Link>
+            <span>{t.getStarted}</span>
+            <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+          </button>
           <button
             onClick={() => setIsStoreNodeModalOpen(true)}
-            className="px-6 py-3.5 rounded-xl bg-[#080B0B] hover:bg-[#111717] text-[#94A3B8] hover:text-[#F8FAFC] border border-[#252F2D] transition flex items-center gap-2"
+            className="px-6 py-3.5 rounded-full bg-[#080B0B] hover:bg-[#111717] text-[#94A3B8] hover:text-[#F8FAFC] border border-[#252F2D] transition flex items-center gap-2 cursor-pointer"
           >
-            <Search className="w-4 h-4 text-[#C4F12A]" />
-            <span>Connect Demo Node</span>
+            <Search className="w-4 h-4 text-[#00c957]" />
+            <span>Connect to Your Store</span>
           </button>
         </div>
 
@@ -482,6 +552,55 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* 4. ROI & FINANCIAL IMPACT (Navigated via ROI in top bar) */}
+      <section id="roi" className="py-20 px-6 max-w-7xl mx-auto border-t border-[#252F2D]">
+        <div className="text-center max-w-3xl mx-auto mb-14">
+          <span className="text-xs font-mono font-bold text-[#00c957] uppercase tracking-wider">
+            Measurable Return on Investment
+          </span>
+          <h2 className="text-3xl sm:text-4xl font-black text-[#F8FAFC] mt-2">
+            Accelerate Cash Flow & Eliminate Downtime.
+          </h2>
+          <p className="text-sm text-[#94A3B8] mt-3">
+            Every minute saved at the checkout counter and every recovered offline transaction converts directly to bottom-line profitability.
+          </p>
+        </div>
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          <div className="bg-[#0b0f0e] border border-[#1f2824] rounded-2xl p-6 space-y-2 hover:border-[#00c957]/40 transition">
+            <span className="text-3xl font-black text-[#00c957] font-mono">0.3s</span>
+            <h4 className="font-bold text-white text-base">Rapid Checkout Speed</h4>
+            <p className="text-xs text-[#94A3B8] leading-relaxed">
+              Eliminates counter queue congestion during rush hours with instant optical scanner recognition.
+            </p>
+          </div>
+
+          <div className="bg-[#0b0f0e] border border-[#1f2824] rounded-2xl p-6 space-y-2 hover:border-[#00c957]/40 transition">
+            <span className="text-3xl font-black text-[#00c957] font-mono">100%</span>
+            <h4 className="font-bold text-white text-base">Offline Engine SLA</h4>
+            <p className="text-xs text-[#94A3B8] leading-relaxed">
+              Operate through broadband and power drops with local IndexedDB cache. Zero missed invoices.
+            </p>
+          </div>
+
+          <div className="bg-[#0b0f0e] border border-[#1f2824] rounded-2xl p-6 space-y-2 hover:border-[#00c957]/40 transition">
+            <span className="text-3xl font-black text-[#00c957] font-mono">+18.4%</span>
+            <h4 className="font-bold text-white text-base">Revenue Velocity</h4>
+            <p className="text-xs text-[#94A3B8] leading-relaxed">
+              Instant customer credit Khata and WhatsApp invoice links boost repeat purchase cycles.
+            </p>
+          </div>
+
+          <div className="bg-[#0b0f0e] border border-[#1f2824] rounded-2xl p-6 space-y-2 hover:border-[#00c957]/40 transition">
+            <span className="text-3xl font-black text-[#00c957] font-mono">₹0</span>
+            <h4 className="font-bold text-white text-base">Hardware Lock-In</h4>
+            <p className="text-xs text-[#94A3B8] leading-relaxed">
+              Runs in standard browsers across existing laptops, tablets, or phones with standard thermal printers.
+            </p>
+          </div>
+        </div>
+      </section>
+
       {/* 4. RETAIL MANAGEMENT SOLUTIONS */}
       <section id="solutions" className="py-20 px-6 max-w-7xl mx-auto border-t border-[#252F2D] bg-[#111717]/50 rounded-3xl my-8">
         <div className="text-center max-w-3xl mx-auto mb-12">
@@ -560,16 +679,6 @@ export default function HomePage() {
                 <span>Shift cash float tracking with automatic variance calculation</span>
               </li>
             </ul>
-
-            <div className="pt-2">
-              <Link
-                href="/shop/oursell/pos"
-                className="px-5 py-3 rounded-xl bg-[#10B981] hover:bg-[#10B981]/90 text-slate-950 font-black text-xs inline-flex items-center gap-2 shadow-lg shadow-[#10B981]/20 transition"
-              >
-                <span>Launch Interactive POS Demo</span>
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-            </div>
           </div>
 
           <div className="bg-[#151D1C] border border-[#252F2D] rounded-3xl p-6 shadow-xl">
@@ -628,15 +737,6 @@ export default function HomePage() {
               <p className="text-xs sm:text-sm text-[#94A3B8] leading-relaxed">
                 Generate real, scannable barcodes in multiple international formats: EAN-13, EAN-8, UPC-A, Code 128, Code 39, and QR Code. Print stickers in thermal roll formats (50x25mm, 38x25mm, 60x40mm) or multi-label A4 sheets.
               </p>
-              <div className="pt-2">
-                <Link
-                  href="/shop/oursell/barcodes"
-                  className="px-5 py-2.5 rounded-xl bg-[#151D1C] hover:bg-[#1f2a29] text-[#F8FAFC] border border-[#252F2D] font-bold text-xs inline-flex items-center gap-2 transition"
-                >
-                  <Barcode className="w-4 h-4 text-[#10B981]" />
-                  <span>Open Barcode Studio Workspace</span>
-                </Link>
-              </div>
             </div>
 
             {/* Barcode Sticker Preview Graphic */}
@@ -644,17 +744,17 @@ export default function HomePage() {
               <span className="text-[10px] text-[#94A3B8] block uppercase">Sample 50x25mm Label</span>
               <div className="bg-white p-4 rounded-xl text-slate-900 inline-block shadow-lg">
                 <div className="text-[11px] font-bold truncate max-w-[200px]">Artisan Potato Crisps 50g</div>
-                {/* Visual Barcode Lines */}
-                <div className="flex items-center justify-center gap-0.5 h-12 my-1 px-4">
-                  {[3, 1, 2, 4, 1, 3, 2, 1, 4, 2, 1, 3, 2, 4, 1, 2, 3, 1, 4, 2].map((w, idx) => (
-                    <div
-                      key={idx}
-                      className="bg-black h-full"
-                      style={{ width: `${w}px` }}
-                    />
-                  ))}
+                {/* Real Scannable EAN-13 Barcode */}
+                <div className="my-1.5 flex items-center justify-center">
+                  <BarcodeRenderer
+                    type="EAN13"
+                    value="8902000000016"
+                    width={1.2}
+                    height={36}
+                    displayValue={true}
+                    fontSize={10}
+                  />
                 </div>
-                <div className="text-[10px] tracking-widest font-bold">8 902000 000001</div>
                 <div className="text-xs font-black text-slate-950 mt-1">₹25.00</div>
               </div>
               <span className="text-[11px] text-[#10B981] block font-sans font-bold">
@@ -665,193 +765,289 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* 7. PRICING PLANS */}
-      <section id="pricing" className="py-20 px-6 max-w-7xl mx-auto border-t border-[#252F2D]">
-        <div className="text-center max-w-3xl mx-auto mb-16">
-          <span className="text-xs font-mono font-bold text-[#10B981] uppercase tracking-wider">
-            Transparent Pricing
-          </span>
-          <h2 className="text-3xl sm:text-4xl font-black text-[#F8FAFC] mt-2">
-            Predictable plans for ambitious businesses.
+      {/* 7. PRICING PLANS (Exact Match to Reference Design) */}
+      <section id="pricing" className="py-24 px-4 sm:px-6 max-w-7xl mx-auto relative">
+        {/* Ambient Emerald Glow Background */}
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] sm:w-[900px] h-[400px] bg-[#00e599]/5 blur-[140px] pointer-events-none rounded-full" />
+        <div className="absolute top-10 left-10 w-72 h-72 bg-[#00e599]/10 blur-[120px] pointer-events-none rounded-full" />
+        <div className="absolute top-10 right-10 w-72 h-72 bg-[#00e599]/10 blur-[120px] pointer-events-none rounded-full" />
+
+        {/* Section Header */}
+        <div className="text-center max-w-3xl mx-auto mb-12 relative z-10">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-[#00e599]/40 bg-[#00e599]/10 text-[#00e599] text-[11px] font-mono font-bold tracking-widest uppercase shadow-sm">
+            <span>OUR PRICING PLANS</span>
+          </div>
+
+          <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black text-white mt-5 tracking-tight">
+            Our <span className="text-[#00e599]">pricing plans</span>
           </h2>
-          <p className="text-sm text-[#94A3B8] mt-3">
-            No hidden transaction fees. Offline engine included in all tiers.
+
+          <p className="text-sm sm:text-base text-neutral-400 mt-3.5 max-w-xl mx-auto leading-relaxed">
+            Designed for every stage of your journey. Start today, no credit card required.
           </p>
+
+          {/* Monthly / Annual Billing Toggle */}
+          <div className="mt-8 inline-flex items-center p-1 bg-[#0c1412] border border-[#1e2a26] rounded-full shadow-lg">
+            <button
+              type="button"
+              onClick={() => setBillingCycle('MONTHLY')}
+              className={`px-5 sm:px-6 py-2 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer ${
+                billingCycle === 'MONTHLY'
+                  ? 'bg-[#00e599] text-slate-950 font-black shadow-md shadow-[#00e599]/30'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+            >
+              Monthly Billing
+            </button>
+            <button
+              type="button"
+              onClick={() => setBillingCycle('ANNUAL')}
+              className={`px-5 sm:px-6 py-2 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer ${
+                billingCycle === 'ANNUAL'
+                  ? 'bg-[#00e599] text-slate-950 font-black shadow-md shadow-[#00e599]/30'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+            >
+              Annual Billing
+            </button>
+          </div>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-6">
-          {/* Starter Plan */}
-          <div className="bg-[#151D1C] border border-[#252F2D] rounded-2xl p-6 space-y-6">
-            <div>
-              <span className="text-xs font-mono text-[#94A3B8] font-bold">STARTER STORE</span>
-              <div className="text-3xl font-black text-[#F8FAFC] font-mono mt-2">
-                ₹999<span className="text-xs text-[#94A3B8] font-sans font-normal"> / month</span>
-              </div>
-              <p className="text-xs text-[#94A3B8] mt-2">
-                For single stores, boutiques and small kiosks.
-              </p>
-            </div>
-            <ul className="space-y-2.5 text-xs text-[#F8FAFC]">
-              <li className="flex items-center gap-2">
-                <Check className="w-3.5 h-3.5 text-[#10B981]" />
-                <span>1 Store Outlet • 2 Terminals</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-3.5 h-3.5 text-[#10B981]" />
-                <span>Full POS Register & Offline Billing</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-3.5 h-3.5 text-[#10B981]" />
-                <span>Barcode Studio & 80mm Receipts</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-3.5 h-3.5 text-[#10B981]" />
-                <span>Up to 1,000 Catalog Products</span>
-              </li>
-            </ul>
-            <Link
-              href="/register-brand"
-              className="w-full py-2.5 bg-[#080B0B] hover:bg-[#111717] text-[#F8FAFC] border border-[#252F2D] font-bold text-xs rounded-xl block text-center transition"
-            >
-              Choose Starter
-            </Link>
-          </div>
+        {/* 3 Pricing Cards Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 relative z-10 items-stretch">
+          {pricingPlans.map((plan) => {
+            const isPro = plan.id === 'professional' || plan.name?.toLowerCase().includes('pro');
+            const displayPrice = billingCycle === 'ANNUAL' ? (plan.annualPrice || 0) : plan.monthlyPrice;
+            const periodLabel = billingCycle === 'ANNUAL' ? '/ month' : '/ month';
 
-          {/* Professional Plan (Highlighted) */}
-          <div className="bg-[#151D1C] border-2 border-[#10B981] rounded-2xl p-6 space-y-6 relative shadow-xl shadow-[#10B981]/10">
-            <span className="absolute -top-3 right-6 bg-[#10B981] text-slate-950 font-black text-[10px] uppercase px-2.5 py-0.5 rounded-full">
-              MOST POPULAR
-            </span>
-            <div>
-              <span className="text-xs font-mono text-[#10B981] font-bold">PROFESSIONAL</span>
-              <div className="text-3xl font-black text-[#F8FAFC] font-mono mt-2">
-                ₹2,499<span className="text-xs text-[#94A3B8] font-sans font-normal"> / month</span>
-              </div>
-              <p className="text-xs text-[#94A3B8] mt-2">
-                For busy supermarkets, restaurants and multi-counter outlets.
-              </p>
-            </div>
-            <ul className="space-y-2.5 text-xs text-[#F8FAFC]">
-              <li className="flex items-center gap-2">
-                <Check className="w-3.5 h-3.5 text-[#10B981]" />
-                <span>Up to 3 Outlets • 6 Terminals</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-3.5 h-3.5 text-[#10B981]" />
-                <span>Customer Khata & Credit Ledger</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-3.5 h-3.5 text-[#10B981]" />
-                <span>Purchase Orders & Supplier Module</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-3.5 h-3.5 text-[#10B981]" />
-                <span>Unlimited Catalog Products</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-3.5 h-3.5 text-[#10B981]" />
-                <span>English, Malayalam & Arabic Support</span>
-              </li>
-            </ul>
-            <Link
-              href="/register-brand"
-              className="w-full py-2.5 bg-[#10B981] hover:bg-[#10B981]/90 text-slate-950 font-black text-xs rounded-xl block text-center transition shadow-md shadow-[#10B981]/20"
-            >
-              Start Professional
-            </Link>
-          </div>
+            return (
+              <div
+                key={plan.id}
+                className={`rounded-[28px] p-7 sm:p-8 flex flex-col justify-between transition-all duration-300 relative ${
+                  isPro
+                    ? 'bg-[#0e1614] border-2 border-[#00e599] shadow-[0_0_50px_rgba(0,229,153,0.18)] hover:-translate-y-1'
+                    : 'bg-[#101715] border border-[#1e2a26] hover:border-[#2b3c37] hover:-translate-y-1 shadow-xl'
+                }`}
+              >
+                {/* MOST POPULAR Badge */}
+                {isPro && (
+                  <span className="absolute -top-3.5 right-8 bg-[#00e599] text-slate-950 font-black text-[10px] tracking-wider uppercase px-3.5 py-1 rounded-full shadow-md shadow-[#00e599]/30">
+                    MOST POPULAR
+                  </span>
+                )}
 
-          {/* Enterprise Plan */}
-          <div className="bg-[#151D1C] border border-[#252F2D] rounded-2xl p-6 space-y-6">
-            <div>
-              <span className="text-xs font-mono text-[#C4F12A] font-bold">MULTI-CHAIN ENTERPRISE</span>
-              <div className="text-3xl font-black text-[#F8FAFC] font-mono mt-2">
-                ₹4,999<span className="text-xs text-[#94A3B8] font-sans font-normal"> / month</span>
+                <div className="space-y-4">
+                  {/* Plan Name */}
+                  <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                    {plan.id === 'starter' && !plan.name.toLowerCase().includes('plan')
+                      ? `${plan.name} Plan`
+                      : plan.name}
+                  </h3>
+
+                  {/* Price */}
+                  <div>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-4xl sm:text-5xl font-black text-white font-mono tracking-tight">
+                        ₹{displayPrice.toLocaleString('en-IN')}
+                      </span>
+                      <span className="text-xs sm:text-sm text-neutral-400 font-sans">
+                        {periodLabel}
+                      </span>
+                    </div>
+                    {billingCycle === 'ANNUAL' && plan.annualPrice > 0 && (
+                      <span className="text-[11px] font-mono text-[#00e599] block mt-1">
+                        Billed annually (₹{plan.annualPrice.toLocaleString('en-IN')})
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Plan Description */}
+                  <p className="text-xs text-neutral-400 leading-relaxed min-h-[36px]">
+                    {plan.description}
+                  </p>
+
+                  {/* Button: Contact Us → */}
+                  <div className="pt-2">
+                    <a
+                      href="https://mail.google.com/mail/u/0/?tab=rm&ogbl#inbox?compose=GTvVlcSHxGmSbXfBbdtCFBqNwNrHfgTqSCHRbKLBqRRBTNJLddxFFjTmNKGrvFMZtMTqSBDNXwxnJ"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`w-full py-3 sm:py-3.5 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer shadow-sm ${
+                        isPro
+                          ? 'bg-[#00e599] hover:bg-[#00d08a] text-slate-950 font-black shadow-lg shadow-[#00e599]/25 hover:shadow-[#00e599]/40'
+                          : 'bg-[#15201d] hover:bg-[#1c2a26] text-white border border-[#263732]'
+                      }`}
+                    >
+                      <span>Contact Us</span>
+                      <span className="text-sm font-bold">→</span>
+                    </a>
+                  </div>
+
+                  {/* FEATURES Checklist */}
+                  <div className="pt-4 border-t border-[#1a2522] space-y-3.5">
+                    <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-neutral-400 block">
+                      FEATURES
+                    </span>
+                    <ul className="space-y-3 text-xs text-neutral-200">
+                      {plan.features.map((feat, fIdx) => (
+                        <li key={fIdx} className="flex items-center gap-3">
+                          <div className="w-5 h-5 rounded-full bg-[#00e599] flex items-center justify-center shrink-0 shadow-xs">
+                            <Check className="w-3.5 h-3.5 text-slate-950 stroke-[3]" />
+                          </div>
+                          <span className="font-semibold text-[13px] text-neutral-200">{feat}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
               </div>
-              <p className="text-xs text-[#94A3B8] mt-2">
-                For retail chains, franchises, and regional networks.
-              </p>
-            </div>
-            <ul className="space-y-2.5 text-xs text-[#F8FAFC]">
-              <li className="flex items-center gap-2">
-                <Check className="w-3.5 h-3.5 text-[#10B981]" />
-                <span>Unlimited Outlets & Terminals</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-3.5 h-3.5 text-[#10B981]" />
-                <span>Centralized Fleet Management</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-3.5 h-3.5 text-[#10B981]" />
-                <span>Dedicated DB Isolation & Custom Domain</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-3.5 h-3.5 text-[#10B981]" />
-                <span>24/7 Priority SLA & On-Prem Support</span>
-              </li>
-            </ul>
-            <Link
-              href="/register-brand"
-              className="w-full py-2.5 bg-[#080B0B] hover:bg-[#111717] text-[#F8FAFC] border border-[#252F2D] font-bold text-xs rounded-xl block text-center transition"
-            >
-              Contact Enterprise
-            </Link>
-          </div>
+            );
+          })}
         </div>
       </section>
 
       {/* 8. FAQ SECTION */}
-      <section className="py-20 px-6 max-w-4xl mx-auto border-t border-[#252F2D]">
+      <section id="faq" className="py-20 px-6 max-w-4xl mx-auto border-t border-[#252F2D]">
         <div className="text-center mb-12">
           <span className="text-xs font-mono font-bold text-[#10B981] uppercase tracking-wider">
-            Got Questions?
+            OURSELL RETAIL POS
           </span>
-          <h2 className="text-3xl font-black text-[#F8FAFC] mt-2">
-            Frequently Asked Questions
+          <h2 className="text-3xl sm:text-4xl font-black text-[#F8FAFC] mt-2 tracking-tight">
+            FREQUENTLY ASKED QUESTIONS &amp; SYSTEM OVERVIEW
           </h2>
+          <div className="mt-6 p-4 rounded-xl bg-[#151D1C] border border-[#252F2D] max-w-2xl mx-auto text-left flex items-start gap-3">
+            <div className="p-1.5 rounded-lg bg-[#10B981]/10 text-[#10B981] shrink-0 mt-0.5">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-[#F8FAFC] uppercase tracking-wider font-mono">
+                About this document
+              </p>
+              <p className="text-xs text-[#94A3B8] mt-1 leading-relaxed">
+                A quick reference to the Oursell Retail POS capabilities described in this FAQ.
+              </p>
+            </div>
+          </div>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-6">
           {[
             {
-              q: 'Can Oursell run completely offline without internet?',
-              a: 'Yes! Oursell uses a localized IndexedDB database engine inside your browser. You can scan barcodes, ring up sales, print thermal receipts, and adjust inventory with zero internet. Once connectivity resumes, it synchronizes securely with the cloud.',
+              category: 'GENERAL OVERVIEW',
+              items: [
+                {
+                  id: 1,
+                  q: '1. What is Oursell Retail POS?',
+                  a: 'Oursell Retail POS is an advanced, user-friendly point-of-sale software and hardware solution designed specifically for retail businesses. It helps you manage daily sales transactions, keep track of live inventory, manage customer relationships (CRM), and generate in-depth business reports.',
+                },
+                {
+                  id: 2,
+                  q: '2. Is Oursell POS cloud-based or on-premise?',
+                  a: 'Oursell Retail POS features cloud synchronization, allowing you to access real-time sales data, inventory levels, and analytics remotely from anywhere, while ensuring uninterrupted local offline checkout capabilities during internet outages.',
+                },
+                {
+                  id: 3,
+                  q: '3. What types of retail businesses is Oursell POS suitable for?',
+                  a: 'Oursell Retail POS is designed for a wide range of businesses, including apparel and fashion boutiques, electronics stores, grocery and convenience shops, pharmacies, specialty gift stores, restaurants, cafés, and multi-location retail chains. It provides flexible solutions for managing sales, inventory, billing, and daily business operations across different industries.',
+                },
+              ],
             },
             {
-              q: 'Which barcode scanners and receipt printers are supported?',
-              a: 'All standard USB and Bluetooth HID barcode scanners are natively supported without drivers. For receipts, any 80mm or 58mm ESC/POS thermal printer is fully compatible.',
+              category: 'SALES & CHECKOUT',
+              items: [
+                {
+                  id: 4,
+                  q: '4. How do I process a sale or scan items?',
+                  a: 'Cashiers can quickly scan product barcodes using an integrated barcode scanner or tap/select items directly from the customizable touchscreen grid. The system instantly calculates taxes, discounts, and the grand total.',
+                },
+                {
+                  id: 5,
+                  q: '5. What payment methods does Oursell POS support?',
+                  a: 'The system supports flexible payment integrations, including:',
+                  bullets: [
+                    'Cash (with automatic change calculation)',
+                    'Credit and debit cards (via integrated card readers/terminals)',
+                    'Mobile and contactless wallets (Apple Pay, Google Pay, etc.)',
+                    'Split payments and store credit/gift cards',
+                  ],
+                },
+                {
+                  id: 6,
+                  q: '6. How do I handle returns, exchanges, or refunds?',
+                  a: 'To process a return or exchange, pull up the original transaction using the receipt barcode or customer purchase history, select the item(s) to be returned, and issue a refund or store credit with a few clicks. Manager approval can be configured for security.',
+                },
+              ],
             },
             {
-              q: 'How does multi-store isolation work?',
-              a: 'Each business operates in its own tenant namespace. Records for products, inventory, customers, and staff are strictly partitioned by store ID.',
+              category: 'INVENTORY & STOCK MANAGEMENT',
+              items: [
+                {
+                  id: 7,
+                  q: '7. How does inventory tracking work?',
+                  a: 'Inventory updates automatically in real-time with every completed sale, return, or stock transfer, eliminating manual counting errors and ensuring accurate stock visibility across your store.',
+                },
+                {
+                  id: 8,
+                  q: '8. Can I set up low-stock alerts?',
+                  a: 'Yes. You can configure minimum stock thresholds for your products. The system will automatically notify you or generate reorder reports when items are running low, preventing unexpected stockouts.',
+                },
+                {
+                  id: 9,
+                  q: '9. Can I import my existing product catalog in bulk?',
+                  a: 'Yes, Oursell POS allows you to bulk-import your inventory list, product variants (size, color, material), pricing tiers, and barcodes using CSV or Excel templates.',
+                },
+              ],
             },
-            {
-              q: 'Can staff access store settings or profit reports?',
-              a: 'No. Staff accounts are strictly role-based (STORE_STAFF) and restricted from administrative settings, profit metrics, and staff management unless explicitly granted by the store admin.',
-            },
-          ].map((faq, idx) => (
-            <div
-              key={idx}
-              className="bg-[#151D1C] border border-[#252F2D] rounded-2xl overflow-hidden"
-            >
-              <button
-                onClick={() => setActiveFaq(activeFaq === idx ? null : idx)}
-                className="w-full p-5 text-left flex items-center justify-between text-sm font-bold text-[#F8FAFC]"
-              >
-                <span>{faq.q}</span>
-                <ChevronDown
-                  className={`w-4 h-4 text-[#10B981] transition-transform ${
-                    activeFaq === idx ? 'rotate-180' : ''
-                  }`}
-                />
-              </button>
-              {activeFaq === idx && (
-                <div className="px-5 pb-5 text-xs text-[#94A3B8] leading-relaxed border-t border-[#252F2D]/50 pt-3">
-                  {faq.a}
-                </div>
-              )}
+          ].map((group) => (
+            <div key={group.category} className="space-y-3">
+              <div className="flex items-center gap-3 pt-4">
+                <span className="text-xs font-mono font-bold text-[#10B981] uppercase tracking-wider bg-[#10B981]/10 border border-[#10B981]/20 px-3.5 py-1 rounded-full">
+                  {group.category}
+                </span>
+                <div className="h-px flex-1 bg-[#252F2D]" />
+              </div>
+
+              <div className="space-y-3">
+                {group.items.map((faq) => (
+                  <div
+                    key={faq.id}
+                    className="bg-[#151D1C] border border-[#252F2D] rounded-2xl overflow-hidden hover:border-[#10B981]/30 transition"
+                  >
+                    <button
+                      onClick={() => setActiveFaq(activeFaq === faq.id ? null : faq.id)}
+                      className="w-full p-5 text-left flex items-center justify-between text-sm sm:text-base font-bold text-[#F8FAFC] gap-4"
+                    >
+                      <span className="leading-snug">{faq.q}</span>
+                      <ChevronDown
+                        className={`w-4 h-4 text-[#10B981] shrink-0 transition-transform duration-200 ${
+                          activeFaq === faq.id ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </button>
+                    {activeFaq === faq.id && (
+                      <div className="px-5 pb-5 text-xs sm:text-sm text-[#94A3B8] leading-relaxed border-t border-[#252F2D]/50 pt-3">
+                        <p>{faq.a}</p>
+                        {faq.bullets && (
+                          <ul className="mt-3 space-y-2">
+                            {faq.bullets.map((bullet, bIdx) => (
+                              <li key={bIdx} className="flex items-center gap-2.5 text-[#CBD5E1]">
+                                <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] shrink-0" />
+                                <span>{bullet}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
+        </div>
+
+        <div className="mt-12 text-center text-[11px] font-mono text-[#64748B] uppercase tracking-wider">
+          OURSELL RETAIL POS • FAQ &amp; SYSTEM OVERVIEW
         </div>
       </section>
 
@@ -890,7 +1086,7 @@ export default function HomePage() {
                     PHONE NUMBER
                   </span>
                   <span className="text-xs font-bold text-[#F8FAFC] block font-mono">
-                    +91 98765 43210
+                    +91 81290 31950
                   </span>
                 </div>
               </div>
@@ -905,7 +1101,7 @@ export default function HomePage() {
                   Directions on Maps
                 </a>
                 <a
-                  href="tel:+919876543210"
+                  href="tel:+918129031950"
                   className="px-4 py-2 bg-[#080B0B] hover:bg-[#111717] text-[#94A3B8] hover:text-[#F8FAFC] border border-[#252F2D] font-bold text-xs rounded-xl text-center transition"
                 >
                   Call Store
@@ -968,55 +1164,32 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* 10. CONNECT TO STORE NODE MODAL (Exact match to Reference Screenshot 2) */}
-      {isStoreNodeModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#151D1C] border border-[#252F2D] rounded-2xl max-w-md w-full p-6 shadow-2xl relative animate-scaleUp">
-            {/* Close Button */}
-            <button
-              onClick={() => setIsStoreNodeModalOpen(false)}
-              className="absolute right-4 top-4 w-7 h-7 rounded-full bg-[#080B0B] border border-[#252F2D] text-[#94A3B8] hover:text-[#F8FAFC] flex items-center justify-center transition"
-            >
-              <X className="w-4 h-4" />
-            </button>
+      {/* 10. CONNECT TO STORE NODE MODAL */}
+      <StoreDiscoveryModal
+        isOpen={isStoreNodeModalOpen}
+        onClose={() => setIsStoreNodeModalOpen(false)}
+      />
 
-            <div className="flex items-center gap-2.5 mb-2">
-              <Search className="w-5 h-5 text-[#10B981]" />
-              <h3 className="text-lg font-bold text-[#F8FAFC]">Connect to Store Node</h3>
-            </div>
-            <p className="text-xs text-[#94A3B8] mb-5 leading-relaxed">
-              Enter your store&apos;s custom subdomain slug to connect your register.
-            </p>
+      {/* 11. REGISTER CONNECTION MODAL (Exact match to Reference Screenshot 2) */}
+      <RegisterConnectionModal
+        isOpen={isRegisterConnectionOpen}
+        onClose={() => setIsRegisterConnectionOpen(false)}
+      />
 
-            <form onSubmit={handleConnectStoreNode} className="space-y-4">
-              <div className="relative">
-                <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-[#94A3B8]" />
-                <input
-                  type="text"
-                  required
-                  value={storeSlugInput}
-                  onChange={(e) => setStoreSlugInput(e.target.value)}
-                  placeholder="e.g., oursell"
-                  className="w-full pl-10 pr-4 py-2.5 bg-[#080B0B] border border-[#252F2D] rounded-xl text-[#F8FAFC] placeholder-[#94A3B8]/50 focus:outline-none focus:border-[#C4F12A] focus:ring-1 focus:ring-[#C4F12A] font-mono text-xs transition"
-                  autoFocus
-                />
-              </div>
-
-              <div className="flex items-center justify-between text-[11px] text-[#94A3B8]">
-                <span>Default Demo: <button type="button" onClick={() => setStoreSlugInput('oursell')} className="text-[#C4F12A] font-mono underline font-bold">oursell</button></span>
-                <span>Flagship: <button type="button" onClick={() => setStoreSlugInput('centralmart')} className="text-[#10B981] font-mono underline font-bold">centralmart</button></span>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-2.5 bg-[#10B981] hover:bg-[#10B981]/90 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl transition shadow-md shadow-[#10B981]/20"
-              >
-                Open Store Workspace
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* 12. PLAN CONTACT & ENQUIRY MODAL (Directly triggered by Contact Us buttons) */}
+      <PlanContactModal
+        isOpen={isPlanContactModalOpen}
+        onClose={() => setIsPlanContactModalOpen(false)}
+        plan={selectedContactPlan}
+        billingCycle={billingCycle}
+        displayPrice={
+          selectedContactPlan
+            ? billingCycle === 'ANNUAL'
+              ? (selectedContactPlan.annualPrice || 0)
+              : selectedContactPlan.monthlyPrice
+            : 0
+        }
+      />
 
       {/* 11. PROFESSIONAL FOOTER */}
       <footer className="bg-[#080B0B] border-t border-[#252F2D] py-12 px-6">
@@ -1051,8 +1224,6 @@ export default function HomePage() {
             </span>
             <ul className="space-y-2 text-[#94A3B8]">
               <li><Link href="/login" className="hover:text-[#F8FAFC]">Store Login</Link></li>
-              <li><Link href="/shop/oursell" className="hover:text-[#F8FAFC]">Demo Store Workspace</Link></li>
-              <li><Link href="/shop/oursell/barcodes" className="hover:text-[#F8FAFC]">Barcode Studio</Link></li>
               <li><Link href="/register-brand" className="hover:text-[#F8FAFC]">Brand Registration</Link></li>
             </ul>
           </div>

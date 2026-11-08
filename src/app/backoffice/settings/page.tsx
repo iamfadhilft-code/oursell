@@ -1,6 +1,8 @@
 'use client';
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { usePosStore } from '@/store/usePosStore';
+import { useRoleAccess } from '@/hooks/useRoleAccess';
 import { PosSidebar } from '@/components/layout/PosSidebar';
 import { PosHeader } from '@/components/layout/PosHeader';
 import { Language } from '@/types/pos';
@@ -12,6 +14,8 @@ import {
   DollarSign,
   FileText,
   CheckCircle2,
+  Lock,
+  ArrowRight,
 } from 'lucide-react';
 
 export default function SettingsPage() {
@@ -22,6 +26,7 @@ export default function SettingsPage() {
     language,
     setLanguage,
   } = usePosStore();
+  const { isAdmin, isStaff } = useRoleAccess();
 
   const [storeName, setStoreName] = useState(brandName);
   const [storeCurrency, setStoreCurrency] = useState(currency);
@@ -32,6 +37,10 @@ export default function SettingsPage() {
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isAdmin) {
+      alert('Restricted: Only Store Administrators can save store settings.');
+      return;
+    }
     usePosStore.setState({
       brandName: storeName,
       currency: storeCurrency,
@@ -39,6 +48,37 @@ export default function SettingsPage() {
     setSavedNotice(true);
     setTimeout(() => setSavedNotice(false), 3000);
   };
+
+  if (isStaff) {
+    return (
+      <div className="flex h-screen w-screen bg-[#F8FAFC] text-slate-800 font-sans overflow-hidden select-none">
+        <PosSidebar />
+        <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+          <PosHeader />
+          <main className="flex-1 flex items-center justify-center p-6">
+            <div className="max-w-md w-full bg-white border border-slate-200 rounded-3xl p-8 shadow-sm text-center space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
+                <Lock className="w-6 h-6" />
+              </div>
+              <h2 className="text-xl font-bold text-slate-900">Access Restricted to Administrators</h2>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                You are currently logged in with <strong className="text-slate-700">Store Staff permissions</strong>. Store hardware configuration, tax identifiers, and system parameters are restricted to Store Administrators.
+              </p>
+              <div className="pt-2">
+                <Link
+                  href="/pos/register"
+                  className="w-full py-2.5 bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition shadow-xs"
+                >
+                  <span>Return to POS Billing Register</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              </div>
+            </div>
+          </main>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen w-screen bg-[#F8FAFC] text-slate-800 font-sans overflow-hidden select-none">

@@ -1,70 +1,117 @@
 'use client';
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Search, ArrowRight, Store, ArrowLeft, ArrowUpRight, AlertCircle, Loader2 } from 'lucide-react';
+import { discoverStoreNode, PublicStoreNode } from '@/lib/auth/authService';
 import { useBrandAuthStore } from '@/store/useBrandAuthStore';
-import { useDevCoreStore } from '@/store/useDevCoreStore';
-import {
-  ArrowLeft,
-  Lock,
-  User,
-  AlertCircle,
-  Eye,
-  EyeOff,
-  ShieldCheck,
-  Store,
-  UserCheck,
-  ArrowRight,
-  Check,
-} from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, isLoading, loginError } = useBrandAuthStore();
-  const devCoreLogin = useDevCoreStore((s) => s.login);
 
-  const [username, setUsername] = useState('oursell@admin');
-  const [password, setPassword] = useState('6001');
-  const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
-  const [localError, setLocalError] = useState<string | null>(null);
+  const [slugInput, setSlugInput] = useState('');
+  const [storeResult, setStoreResult] = useState<PublicStoreNode | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLocalError(null);
-    const trimmedUser = username.trim().toLowerCase();
-    const trimmedPass = password.trim();
-
-    if (!trimmedUser || !trimmedPass) {
-      setLocalError('Please enter your username/email and password.');
+  // Search function
+  const searchStore = async (query: string) => {
+    const clean = query.trim().toLowerCase();
+    if (!clean) {
+      setStoreResult(null);
+      setSearchError(null);
       return;
     }
 
-    // 1. Check Platform Developer credentials
-    if (
-      (trimmedUser === 'ourselldev' && trimmedPass === 'oursell@6001') ||
-      (trimmedUser === 'devcore' && trimmedPass === 'devcore@admin2026')
-    ) {
-      const devOk = devCoreLogin(trimmedUser, trimmedPass);
-      if (devOk) {
-        router.push('/devcore');
-        return;
-      }
+    setIsLoading(true);
+    setSearchError(null);
+
+    // Immediate match for Dev Core Control Centre
+    if (clean === 'devcore' || clean === 'dev core') {
+      setStoreResult({
+        id: 'acc-devcore-root',
+        slug: 'devcore',
+        name: 'Dev Core Admin Control Centre',
+        statusText: 'Super Admin Console',
+        isActive: true,
+        businessCategory: 'Control Centre',
+      });
+      setSearchError(null);
+      setIsLoading(false);
+      return;
     }
 
-    // 2. Perform authenticated backend login
-    const res = await login(username, password);
-    if (res.success && res.redirectUrl) {
-      router.push(res.redirectUrl);
-    } else {
-      setLocalError(res.error || 'Authentication failed. Please verify credentials.');
+    try {
+      // Local DB check first
+      const { db } = await import('@/db/posDb');
+      const allBrands = await db.brands.toArray();
+      const matched = allBrands.find((b) => {
+        return (
+          b.brandName?.toLowerCase().includes(clean) ||
+          b.brandId?.toLowerCase().includes(clean) ||
+          b.username?.toLowerCase().includes(clean)
+        );
+      });
+
+      if (matched) {
+        setStoreResult({
+          id: matched.id,
+          slug: matched.brandId || matched.username,
+          name: matched.brandName,
+          statusText: matched.status === 'ACTIVE' ? 'Active Store' : (matched.status || 'Registered'),
+          isActive: matched.status === 'ACTIVE',
+          businessCategory: matched.businessCategory || 'Retail Store',
+        });
+        setSearchError(null);
+        setIsLoading(false);
+        return;
+      }
+
+      const res = await fetch(`/api/store/discover?slug=${encodeURIComponent(clean)}`);
+      const data = await res.json();
+
+      if (res.ok && data.exists && data.store) {
+        setStoreResult(data.store);
+        setSearchError(null);
+      } else {
+        setStoreResult(null);
+        setSearchError(data.error || `Store "${query.trim()}" is not registered.`);
+      }
+    } catch {
+      // Local fallback
+      const localRes = await discoverStoreNode(clean);
+      if (localRes.exists && localRes.store) {
+        setStoreResult(localRes.store);
+        setSearchError(null);
+      } else {
+        setStoreResult(null);
+        setSearchError(localRes.error || `Store "${query.trim()}" is not registered.`);
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleFillDemo = (user: string, pass: string) => {
-    setUsername(user);
-    setPassword(pass);
-    setLocalError(null);
+  useEffect(() => {
+    if (!slugInput.trim()) {
+      setStoreResult(null);
+      setSearchError(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      searchStore(slugInput);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [slugInput]);
+
+  const handleConnect = () => {
+    if (!storeResult) return;
+    if (storeResult.slug === 'devcore') {
+      router.push('/devcore');
+    } else {
+      router.push(`/login/${storeResult.slug}`);
+    }
   };
 
   return (
@@ -74,190 +121,95 @@ export default function LoginPage() {
         <div className="flex items-center justify-between mb-8">
           <Link
             href="/"
-            className="flex items-center gap-2 text-xs font-semibold text-[#94A3B8] hover:text-[#F8FAFC] transition"
+            className="flex items-center gap-2 text-xs font-semibold text-[#8E9B9A] hover:text-[#F8FAFC] transition"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>Back to Homepage</span>
           </Link>
-          <span className="text-[11px] font-mono font-medium text-[#10B981] bg-[#10B981]/10 border border-[#10B981]/20 px-2.5 py-0.5 rounded-full">
+          <span className="text-[11px] font-mono font-bold text-[#10B981] bg-[#10B981]/10 border border-[#10B981]/20 px-2.5 py-0.5 rounded-full">
             RETAIL OS v3.0
           </span>
         </div>
 
-        {/* Login Container Card */}
-        <div className="bg-[#151D1C] border border-[#252F2D] rounded-2xl p-8 shadow-2xl space-y-6">
-          <div className="text-center">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-[#10B981] to-[#C4F12A] text-slate-950 flex items-center justify-center font-black text-2xl mx-auto shadow-lg shadow-[#10B981]/20 mb-3">
-              O
+        {/* Discovery Card */}
+        <div className="bg-[#121615] border border-[#232D2B] rounded-3xl p-7 shadow-2xl text-left space-y-6">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-[#10B981]/15 text-[#10B981] flex items-center justify-center border border-[#10B981]/30">
+              <Search className="w-5 h-5 stroke-[2.5]" />
             </div>
-            <h1 className="text-2xl font-black text-[#F8FAFC] tracking-tight">
-              Log In to Your Store
-            </h1>
-            <p className="text-xs text-[#94A3B8] mt-1.5 leading-relaxed">
-              Enter your authorized credentials to access your retail workspace.
-            </p>
+            <div>
+              <h1 className="text-xl font-black text-white tracking-tight">
+                Connect to Your Store
+              </h1>
+              <p className="text-xs text-[#8E9B9A]">
+                Enter your registered store name or handle to connect your register.
+              </p>
+            </div>
           </div>
 
-          {(localError || loginError) && (
-            <div className="p-3 bg-red-950/60 border border-red-500/40 rounded-xl text-red-200 text-xs flex items-start gap-2.5 animate-fadeIn">
-              <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-              <div className="leading-snug">{localError || loginError}</div>
+          <div className="relative">
+            <div className="w-full bg-[#080B0B] border border-[#232D2B] focus-within:border-[#C4F12A] focus-within:ring-1 focus-within:ring-[#C4F12A] rounded-2xl px-4 py-3.5 flex items-center gap-3 transition">
+              <Search className="w-4 h-4 text-[#637270] shrink-0" />
+              <input
+                type="text"
+                name="store_search_query"
+                autoComplete="off"
+                autoCapitalize="off"
+                spellCheck="false"
+                data-lpignore="true"
+                autoFocus
+                value={slugInput}
+                onChange={(e) => setSlugInput(e.target.value)}
+                placeholder="Enter your store name"
+                className="w-full bg-transparent text-[#F8FAFC] placeholder-[#637270] font-sans text-sm outline-none"
+              />
+              {isLoading && <Loader2 className="w-4 h-4 text-[#C4F12A] animate-spin shrink-0" />}
+            </div>
+          </div>
+
+          {storeResult && (
+            <div className="space-y-4 pt-2">
+              <div className="bg-[#18201F] border border-[#273230] rounded-2xl p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-[#202B2A] flex items-center justify-center text-[#10B981]">
+                    <Store className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-white uppercase">{storeResult.name}</h3>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs font-mono text-[#8E9B9A]">s/${storeResult.slug}</span>
+                      <span className="w-1 h-1 rounded-full bg-[#10B981]" />
+                      <span className="text-[11px] text-[#10B981] font-semibold">Registered Store</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleConnect}
+                className="w-full py-4 rounded-2xl bg-[#C4F12A] hover:bg-[#b0db24] text-slate-950 font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 shadow-xl shadow-[#C4F12A]/15 transition"
+              >
+                <span>CONNECT TERMINAL</span>
+                <ArrowUpRight className="w-4 h-4 stroke-[3]" />
+              </button>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-            {/* Username / Email Field */}
-            <div>
-              <label className="block font-semibold text-[#F8FAFC] mb-1.5">
-                Username or Email
-              </label>
-              <div className="relative">
-                <User className="w-4 h-4 absolute left-3.5 top-3 text-[#94A3B8]" />
-                <input
-                  type="text"
-                  required
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="e.g., oursell@admin or oursell@staff"
-                  className="w-full pl-10 pr-4 py-2.5 bg-[#080B0B] border border-[#252F2D] rounded-xl text-[#F8FAFC] placeholder-[#94A3B8]/50 focus:outline-none focus:border-[#10B981] focus:ring-1 focus:ring-[#10B981] font-mono text-xs transition"
-                  autoFocus
-                />
+          {!storeResult && searchError && !isLoading && (
+            <div className="bg-[#191313] border border-red-900/40 rounded-2xl p-4 flex items-start gap-3">
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+              <div className="text-xs text-red-300">
+                <p className="font-bold">{searchError}</p>
               </div>
             </div>
-
-            {/* Password Field with Show/Hide toggle */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block font-semibold text-[#F8FAFC]">Password</label>
-                <a
-                  href="#forgot"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    alert('For demo accounts, use password 6001 (Admin) or 1234 (Staff).');
-                  }}
-                  className="text-[11px] text-[#10B981] hover:underline"
-                >
-                  Forgot password?
-                </a>
-              </div>
-              <div className="relative">
-                <Lock className="w-4 h-4 absolute left-3.5 top-3 text-[#94A3B8]" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full pl-10 pr-10 py-2.5 bg-[#080B0B] border border-[#252F2D] rounded-xl text-[#F8FAFC] placeholder-[#94A3B8]/50 focus:outline-none focus:border-[#10B981] focus:ring-1 focus:ring-[#10B981] text-xs transition font-mono"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-2.5 text-[#94A3B8] hover:text-[#F8FAFC] transition p-0.5"
-                  title={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            {/* Remember Me Checkbox */}
-            <div className="flex items-center justify-between pt-1">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded border-[#252F2D] bg-[#080B0B] text-[#10B981] focus:ring-0 focus:ring-offset-0 cursor-pointer"
-                />
-                <span className="text-[11px] text-[#94A3B8]">Remember me on this terminal</span>
-              </label>
-            </div>
-
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full py-3 bg-[#10B981] hover:bg-[#10B981]/90 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-[#10B981]/20 transition flex items-center justify-center gap-2 disabled:opacity-50 mt-2"
-            >
-              <span>{isLoading ? 'Authenticating...' : 'Sign In to Workspace'}</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </form>
-
-          {/* Quick Test Accounts Card */}
-          <div className="p-3.5 bg-[#080B0B] border border-[#252F2D] rounded-xl text-xs space-y-2">
-            <span className="font-semibold text-[#94A3B8] uppercase tracking-wider text-[10px] block">
-              Quick Demo Accounts:
-            </span>
-
-            {/* Store Admin */}
-            <div className="flex items-center justify-between text-slate-300 font-mono text-[11px] bg-[#151D1C] p-2 rounded-lg border border-[#252F2D]">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-3.5 h-3.5 text-[#C4F12A]" />
-                <span>
-                  Admin: <strong className="text-[#F8FAFC]">oursell@admin</strong> / 6001
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleFillDemo('oursell@admin', '6001')}
-                className="text-[10px] bg-[#10B981]/20 hover:bg-[#10B981]/30 text-[#10B981] font-sans font-bold px-2 py-0.5 rounded transition"
-              >
-                Fill
-              </button>
-            </div>
-
-            {/* Store Staff */}
-            <div className="flex items-center justify-between text-slate-300 font-mono text-[11px] bg-[#151D1C] p-2 rounded-lg border border-[#252F2D]">
-              <div className="flex items-center gap-2">
-                <UserCheck className="w-3.5 h-3.5 text-teal-400" />
-                <span>
-                  Staff: <strong className="text-[#F8FAFC]">oursell@staff</strong> / 1234
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleFillDemo('oursell@staff', '1234')}
-                className="text-[10px] bg-teal-500/20 hover:bg-teal-500/30 text-teal-400 font-sans font-bold px-2 py-0.5 rounded transition"
-              >
-                Fill
-              </button>
-            </div>
-
-            {/* Super Admin */}
-            <div className="flex items-center justify-between text-slate-300 font-mono text-[11px] bg-[#151D1C] p-2 rounded-lg border border-[#252F2D]">
-              <div className="flex items-center gap-2">
-                <Store className="w-3.5 h-3.5 text-blue-400" />
-                <span>
-                  Dev: <strong className="text-[#F8FAFC]">ourselldev</strong> / oursell@6001
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleFillDemo('ourselldev', 'oursell@6001')}
-                className="text-[10px] bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 font-sans font-bold px-2 py-0.5 rounded transition"
-              >
-                Fill
-              </button>
-            </div>
-          </div>
-
-          <div className="text-center pt-2 border-t border-[#252F2D]">
-            <p className="text-xs text-[#94A3B8]">
-              New retail brand or enterprise?{' '}
-              <Link href="/register-brand" className="text-[#10B981] font-semibold hover:underline">
-                Register Your Store
-              </Link>
-            </p>
-          </div>
+          )}
         </div>
       </div>
 
-      {/* Footer */}
-      <footer className="text-center text-xs text-[#94A3B8]/60 py-4">
-        OURSELL Multi-Store Retail Platform • Enterprise Isolated Tenancies
-      </footer>
+      <div className="text-center text-[10px] font-mono text-[#4A5755]">
+        OURSELL OS © 2026 • MULTI-STORE TENANT DISCOVERY
+      </div>
     </div>
   );
 }

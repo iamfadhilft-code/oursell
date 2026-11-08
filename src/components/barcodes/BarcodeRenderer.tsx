@@ -71,9 +71,9 @@ export function BarcodeRenderer({
       if (svgRef.current) {
         try {
           let jsBarcodeFormat: string = 'CODE128';
-          if (type === 'EAN13') jsBarcodeFormat = 'EAN13';
-          else if (type === 'EAN8') jsBarcodeFormat = 'EAN8';
-          else if (type === 'UPCA') jsBarcodeFormat = 'UPC';
+          if (type === 'EAN13' && /^\d{12,13}$/.test(validation.normalized)) jsBarcodeFormat = 'EAN13';
+          else if (type === 'EAN8' && /^\d{7,8}$/.test(validation.normalized)) jsBarcodeFormat = 'EAN8';
+          else if (type === 'UPCA' && /^\d{11,12}$/.test(validation.normalized)) jsBarcodeFormat = 'UPC';
           else if (type === 'CODE39') jsBarcodeFormat = 'CODE39';
 
           JsBarcode(svgRef.current, validation.normalized, {
@@ -85,19 +85,59 @@ export function BarcodeRenderer({
             font: 'monospace',
             textMargin: 2,
             margin: 4,
-            background: 'transparent',
+            background: '#ffffff',
             lineColor: '#000000',
             valid: (valid) => {
               if (!valid) {
-                setRenderError(`Invalid ${type} format`);
-                onError?.(`Invalid ${type} format`);
+                // Graceful fallback to CODE128 for any alphanumeric codes
+                try {
+                  if (svgRef.current) {
+                    JsBarcode(svgRef.current, value.trim(), {
+                      format: 'CODE128',
+                      width,
+                      height,
+                      displayValue,
+                      fontSize,
+                      font: 'monospace',
+                      textMargin: 2,
+                      margin: 4,
+                      background: '#ffffff',
+                      lineColor: '#000000',
+                    });
+                    setRenderError(null);
+                    onError?.(null);
+                  }
+                } catch {
+                  setRenderError(`Invalid ${type} format`);
+                  onError?.(`Invalid ${type} format`);
+                }
               }
             },
           });
         } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : 'Barcode render failed';
-          setRenderError(msg);
-          onError?.(msg);
+          // If formatting threw, try CODE128 fallback
+          try {
+            if (svgRef.current) {
+              JsBarcode(svgRef.current, value.trim(), {
+                format: 'CODE128',
+                width,
+                height,
+                displayValue,
+                fontSize,
+                font: 'monospace',
+                textMargin: 2,
+                margin: 4,
+                background: '#ffffff',
+                lineColor: '#000000',
+              });
+              setRenderError(null);
+              onError?.(null);
+            }
+          } catch {
+            const msg = err instanceof Error ? err.message : 'Barcode render failed';
+            setRenderError(msg);
+            onError?.(msg);
+          }
         }
       }
     }
@@ -122,7 +162,7 @@ export function BarcodeRenderer({
 
   return (
     <div className={`flex items-center justify-center overflow-hidden ${className}`}>
-      <svg ref={svgRef} className="max-w-full" />
+      <svg ref={svgRef} className="max-w-full h-auto block mx-auto" />
     </div>
   );
 }
